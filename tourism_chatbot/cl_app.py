@@ -4,35 +4,35 @@ import chainlit as cl
 import jwt
 import os
 
-# Authenticaion
-@cl.header_auth_callback
-def header_auth_callback(headers: dict) -> Optional[cl.User]:
-  # Verify the signature of a token in the header (ex: jwt token)
-  # or check that the value is matching a row from your database
-  cookie_header = headers.get("cookie")
-  if not cookie_header:
-      return None
+# # Authenticaion
+# @cl.header_auth_callback
+# def header_auth_callback(headers: dict) -> Optional[cl.User]:
+#   # Verify the signature of a token in the header (ex: jwt token)
+#   # or check that the value is matching a row from your database
+#   cookie_header = headers.get("cookie")
+#   if not cookie_header:
+#       return None
   
-  # Parse cookie string
-  cookies = {}
-  for item in cookie_header.split(';'):
-      if '=' in item:
-          key, value = item.strip().split('=', 1)
-          cookies[key] = value
+#   # Parse cookie string
+#   cookies = {}
+#   for item in cookie_header.split(';'):
+#       if '=' in item:
+#           key, value = item.strip().split('=', 1)
+#           cookies[key] = value
           
-  session_id = cookies.get("session")
-  if not session_id:
-      return None
+#   session_id = cookies.get("session")
+#   if not session_id:
+#       return None
   
-  try:
-      secret_key = os.getenv("SESSION_SECRET_KEY")
-      payload = jwt.decode(session_id, secret_key, algorithms=["HS256"])
-      return cl.User(
-          identifier=payload.get("email"),
-          metadata={"role": payload.get("role"), "user_id": payload.get("user_id")}
-      )
-  except jwt.InvalidTokenError:
-      return None
+#   try:
+#       secret_key = os.getenv("SESSION_SECRET_KEY")
+#       payload = jwt.decode(session_id, secret_key, algorithms=["HS256"])
+#       return cl.User(
+#           identifier=payload.get("email"),
+#           metadata={"role": payload.get("role"), "user_id": payload.get("user_id")}
+#       )
+#   except jwt.InvalidTokenError:
+#       return None
     
 # Data Layer
 @cl.data_layer
