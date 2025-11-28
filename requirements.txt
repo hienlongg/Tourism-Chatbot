@@ -1,0 +1,17 @@
+# Core dependencies
+chainlit>=1.0.0
+langchain>=0.1.0
+langchain-google-genai>=1.0.0
+langchain-huggingface>=0.0.1
+langchain-chroma>=0.1.0
+chromadb>=0.4.0
+
+# Data processing
+pandas>=2.0.0
+
+# ML/AI
+sentence-transformers>=2.0.0
+transformers>=4.30.0
+
+# Utilities
+python-dotenv>=1.0.0

@@ -1,56 +1,357 @@
-from chainlit.types import ThreadDict
-from typing import Optional
-import chainlit as cl
-import jwt
-import os
+"""
+Chainlit Tourism Chatbot Application
 
-# # Authenticaion
-# @cl.header_auth_callback
-# def header_auth_callback(headers: dict) -> Optional[cl.User]:
-#   # Verify the signature of a token in the header (ex: jwt token)
-#   # or check that the value is matching a row from your database
-#   cookie_header = headers.get("cookie")
-#   if not cookie_header:
-#       return None
-  
-#   # Parse cookie string
-#   cookies = {}
-#   for item in cookie_header.split(';'):
-#       if '=' in item:
-#           key, value = item.strip().split('=', 1)
-#           cookies[key] = value
-          
-#   session_id = cookies.get("session")
-#   if not session_id:
-#       return None
-  
-#   try:
-#       secret_key = os.getenv("SESSION_SECRET_KEY")
-#       payload = jwt.decode(session_id, secret_key, algorithms=["HS256"])
-#       return cl.User(
-#           identifier=payload.get("email"),
-#           metadata={"role": payload.get("role"), "user_id": payload.get("user_id")}
-#       )
-#   except jwt.InvalidTokenError:
-#       return None
-    
-# Data Layer
-@cl.data_layer
-def get_data_layer():
-    pass
-    
+A conversational AI chatbot for Vietnamese tourism recommendations using RAG
+(Retrieval-Augmented Generation). The chatbot provides personalized suggestions
+based on user queries while tracking visit history and preferences.
+
+Features:
+- Semantic search for tourism locations
+- Visit history tracking per user session
+- Revisit control (allow/disallow suggesting visited places)
+- Streaming LLM responses for better UX
+- Vietnamese language support
+
+"""
+
+import os
+import chainlit as cl
+from typing import List, Dict
+import re
+
+# Import RAG engine
+from rag.rag_engine import (
+    initialize_rag_system,
+    generate_recommendation_stream
+)
+
+
+# ============================================================================
+# GLOBAL STATE (Initialized at startup)
+# ============================================================================
+
+# These will be populated in on_chat_start
+VECTOR_STORE = None
+LLM = None
+EMBEDDINGS = None
+
+
+# ============================================================================
+# STARTUP HANDLER
+# ============================================================================
+
 @cl.on_chat_start
 async def on_chat_start():
-    app_user = cl.user_session.get("user")
-    print("A new chat session has started!")
-    await cl.Message(f"Hello {app_user.identifier}💐✨").send()    
+    """
+    Initialize the chatbot when a new chat session starts.
     
+    This function:
+    1. Loads the RAG system (vector store, LLM, embeddings)
+    2. Initializes user session state (visited_ids, allow_revisit)
+    3. Sends welcome message
+    """
+    global VECTOR_STORE, LLM, EMBEDDINGS
+    
+    # Show loading message
+    loading_msg = cl.Message(content="")
+    await loading_msg.send()
+    
+    try:
+        # Initialize RAG system if not already loaded
+        if VECTOR_STORE is None or LLM is None:
+            await loading_msg.stream_token("🚀 Đang khởi động hệ thống RAG...\n\n")
+            
+            # Get API key from environment
+            api_key = os.getenv("GEMINI_API_KEY")
+            if not api_key:
+                await loading_msg.stream_token(
+                    "⚠️ Cảnh báo: Không tìm thấy GEMINI_API_KEY trong biến môi trường.\n"
+                    "Vui lòng thiết lập API key để sử dụng chatbot.\n\n"
+                )
+                return
+            
+            await loading_msg.stream_token("📂 Đang tải dữ liệu địa danh...\n")
+            await loading_msg.stream_token("🤖 Đang khởi động mô hình embedding...\n")
+            await loading_msg.stream_token("🧠 Đang kết nối với Gemini LLM...\n\n")
+            
+            # Initialize system
+            VECTOR_STORE, LLM, EMBEDDINGS = initialize_rag_system(api_key=api_key)
+            
+            await loading_msg.stream_token("✅ Hệ thống đã sẵn sàng!\n\n")
+        
+        # Initialize user session state
+        cl.user_session.set("visited_ids", [])
+        cl.user_session.set("allow_revisit", False)
+        
+        # Send welcome message
+        await loading_msg.stream_token(
+            "👋 Xin chào! Tôi là trợ lý du lịch thông minh của Việt Nam.\n\n"
+            "Tôi có thể giúp bạn:\n"
+            "✨ Tìm kiếm địa điểm du lịch phù hợp\n"
+            "🗺️ Gợi ý những nơi mới dựa trên sở thích\n"
+            "📝 Ghi nhớ những nơi bạn đã đến\n\n"
+            "**Cách sử dụng:**\n"
+            "- Hỏi tôi về địa điểm: *\"Tìm bãi biển đẹp ở miền Trung\"*\n"
+            "- Báo nơi đã đến: *\"Tôi đã từng đến Hội An\"*\n"
+            "- Cho phép gợi ý lại: *\"Cho phép gợi ý lại\"*\n"
+            "- Không cho phép: *\"Không cho phép gợi ý lại\"*\n\n"
+            "Hãy thử hỏi tôi bất cứ điều gì về du lịch Việt Nam! 🇻🇳"
+        )
+        
+        await loading_msg.update()
+        
+    except Exception as e:
+        await loading_msg.stream_token(
+            f"❌ Lỗi khi khởi động hệ thống: {str(e)}\n\n"
+            "Vui lòng kiểm tra:\n"
+            "1. GEMINI_API_KEY đã được thiết lập\n"
+            "2. File dữ liệu CSV tồn tại\n"
+            "3. Kết nối internet ổn định\n"
+        )
+        await loading_msg.update()
+
+
+# ============================================================================
+# COMMAND DETECTION
+# ============================================================================
+
+def detect_visited_command(message: str) -> List[str]:
+    """
+    Detect if user is reporting visited locations.
+    
+    Patterns:
+    - "Tôi đã từng đến [place]"
+    - "Tôi đã đi [place]"
+    - "Đã ghé [place]"
+    
+    Args:
+        message: User message text
+    
+    Returns:
+        List of location names mentioned (empty if not a visited command)
+    """
+    patterns = [
+        r'(?:tôi\s+)?đã\s+(?:từng\s+)?(?:đến|đi|ghé|thăm)\s+(.+)',
+        r'(?:tôi\s+)?đã\s+(?:từng\s+)?(?:tham quan|viếng)\s+(.+)',
+    ]
+    
+    message_lower = message.lower().strip()
+    
+    for pattern in patterns:
+        match = re.search(pattern, message_lower)
+        if match:
+            # Extract location name(s)
+            locations_str = match.group(1)
+            # Split by common separators
+            locations = re.split(r'[,và&]', locations_str)
+            return [loc.strip() for loc in locations if loc.strip()]
+    
+    return []
+
+
+def detect_allow_revisit_command(message: str) -> str:
+    """
+    Detect if user wants to allow/disallow revisit suggestions.
+    
+    Args:
+        message: User message text
+    
+    Returns:
+        "allow" | "disallow" | "none"
+    """
+    message_lower = message.lower().strip()
+    
+    # Allow patterns
+    allow_patterns = [
+        r'cho\s+phép\s+(?:gợi\s+ý\s+)?lại',
+        r'được\s+(?:gợi\s+ý\s+)?lại',
+        r'có\s+thể\s+(?:gợi\s+ý\s+)?lại',
+    ]
+    
+    # Disallow patterns
+    disallow_patterns = [
+        r'không\s+(?:cho\s+phép|được)\s+(?:gợi\s+ý\s+)?lại',
+        r'không\s+muốn\s+(?:gợi\s+ý\s+)?lại',
+        r'tắt\s+(?:gợi\s+ý\s+)?lại',
+    ]
+    
+    for pattern in allow_patterns:
+        if re.search(pattern, message_lower):
+            return "allow"
+    
+    for pattern in disallow_patterns:
+        if re.search(pattern, message_lower):
+            return "disallow"
+    
+    return "none"
+
+
+# ============================================================================
+# MESSAGE HANDLER
+# ============================================================================
+
+@cl.on_message
+async def on_message(message: cl.Message):
+    """
+    Handle incoming user messages.
+    
+    Flow:
+    1. Detect special commands (visited locations, revisit control)
+    2. Update session state accordingly
+    3. If not a command, generate recommendation using RAG
+    4. Stream response back to user
+    """
+    global VECTOR_STORE, LLM
+    
+    user_message = message.content.strip()
+    
+    # Get session state
+    visited_ids = cl.user_session.get("visited_ids")
+    allow_revisit = cl.user_session.get("allow_revisit")
+    
+    # ========================================================================
+    # COMMAND DETECTION
+    # ========================================================================
+    
+    # Check for visited location command
+    visited_locations = detect_visited_command(user_message)
+    if visited_locations:
+        # User is reporting visited locations
+        from rag.rag_engine import slugify
+        
+        new_ids = []
+        for location in visited_locations:
+            loc_id = slugify(location)
+            if loc_id not in visited_ids:
+                visited_ids.append(loc_id)
+                new_ids.append(location)
+        
+        # Update session
+        cl.user_session.set("visited_ids", visited_ids)
+        
+        # Send confirmation
+        if new_ids:
+            response = (
+                f"✅ Đã ghi nhận! Bạn đã từng đến: **{', '.join(new_ids)}**\n\n"
+                f"Tôi sẽ ưu tiên gợi ý những địa điểm mới cho bạn.\n"
+                f"(Hiện tại: {len(visited_ids)} địa điểm đã ghé thăm)"
+            )
+        else:
+            response = "📝 Các địa điểm này đã có trong danh sách của bạn rồi!"
+        
+        await cl.Message(content=response).send()
+        return
+    
+    # Check for allow/disallow revisit command
+    revisit_cmd = detect_allow_revisit_command(user_message)
+    if revisit_cmd != "none":
+        if revisit_cmd == "allow":
+            cl.user_session.set("allow_revisit", True)
+            response = (
+                "✅ Đã bật chế độ cho phép gợi ý lại!\n\n"
+                "Tôi sẽ gợi ý cả những địa điểm bạn đã từng đến."
+            )
+        else:  # disallow
+            cl.user_session.set("allow_revisit", False)
+            response = (
+                "✅ Đã tắt chế độ gợi ý lại!\n\n"
+                "Tôi sẽ chỉ gợi ý những địa điểm mới mà bạn chưa đến."
+            )
+        
+        await cl.Message(content=response).send()
+        return
+    
+    # ========================================================================
+    # RAG RECOMMENDATION
+    # ========================================================================
+    
+    # Check if system is ready
+    if VECTOR_STORE is None or LLM is None:
+        await cl.Message(
+            content="❌ Hệ thống chưa sẵn sàng. Vui lòng khởi động lại chat."
+        ).send()
+        return
+    
+    # Create streaming message
+    response_msg = cl.Message(content="")
+    await response_msg.send()
+    
+    try:
+        # Show thinking indicator
+        await response_msg.stream_token("🔍 Đang tìm kiếm địa điểm phù hợp...\n\n")
+        
+        # Generate recommendation with streaming
+        metadata = None
+        async for token, meta in generate_recommendation_stream(
+            vector_store=VECTOR_STORE,
+            llm=LLM,
+            user_query=user_message,
+            user_visited_ids=visited_ids,
+            allow_revisit=allow_revisit,
+            verbose=False
+        ):
+            await response_msg.stream_token(token)
+            metadata = meta  # Keep last metadata
+        
+        # Add footer with stats
+        if metadata:
+            footer = "\n\n---\n"
+            footer += f"📊 **Thống kê:**\n"
+            footer += f"- Địa điểm mới: {len(metadata['new_places'])}\n"
+            footer += f"- Địa điểm đã ghé: {len(metadata['old_places'])}\n"
+            footer += f"- Tổng địa điểm bạn đã ghé: {len(visited_ids)}\n"
+            
+            if metadata['filtered_count'] > 0:
+                footer += f"- Đã lọc bỏ: {metadata['filtered_count']} địa điểm đã ghé\n"
+            
+            await response_msg.stream_token(footer)
+        
+        await response_msg.update()
+        
+    except Exception as e:
+        error_msg = (
+            f"❌ Xin lỗi, đã có lỗi xảy ra khi xử lý yêu cầu của bạn.\n\n"
+            f"Chi tiết lỗi: {str(e)}\n\n"
+            f"Vui lòng thử lại hoặc liên hệ quản trị viên."
+        )
+        await response_msg.stream_token(error_msg)
+        await response_msg.update()
+
+
+# ============================================================================
+# ERROR HANDLER
+# ============================================================================
+
 @cl.on_chat_end
-def on_chat_end():
-    print("The user disconnected!")
+async def on_chat_end():
+    """
+    Print when chat session ends.
+    """
+    # Clear session state
+    print("✅ Chat session ended")
+
+
+# ============================================================================
+# MAIN ENTRY POINT
+# ============================================================================
+
+if __name__ == "__main__":
+    """
+    Run the Chainlit app.
     
-@cl.on_chat_resume
-async def on_chat_resume(thread: ThreadDict):
-    print("The user resumed a previous chat session!")
+    Usage:
+        chainlit run cl_app.py -w
     
+    Environment Variables Required:
+        GEMINI_API_KEY: Google Gemini API key
     
+    Optional:
+        CHAINLIT_PORT: Port to run on (default: 8000)
+    """
+    print("\n" + "="*60)
+    print("🚀 STARTING CHAINLIT TOURISM CHATBOT")
+    print("="*60)
+    print("\nMake sure you have set the following environment variables:")
+    print("  - GEMINI_API_KEY: Your Google Gemini API key")
+    print("\nRun with: chainlit run cl_app.py -w")
+    print("="*60 + "\n")
