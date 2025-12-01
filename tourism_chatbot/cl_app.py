@@ -18,13 +18,20 @@ import os
 import chainlit as cl
 from typing import List, Dict
 import re
+import logging
 
 # Import RAG engine
-from rag.rag_engine import (
+from tourism_chatbot.rag.rag_engine import (
     initialize_rag_system,
-    generate_recommendation_stream
 )
 
+# Import the agent
+from tourism_chatbot.agents.tourism_agent import agent
+from tourism_chatbot.agents.tools import set_user_context
+
+# Setup logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # ============================================================================
 # GLOBAL STATE (Initialized at startup)
@@ -82,6 +89,7 @@ async def on_chat_start():
         # Initialize user session state
         cl.user_session.set("visited_ids", [])
         cl.user_session.set("allow_revisit", False)
+        cl.user_session.set("message_history", [])
         
         # Send welcome message
         await loading_msg.stream_token(
@@ -262,7 +270,7 @@ async def on_message(message: cl.Message):
         return
     
     # ========================================================================
-    # RAG RECOMMENDATION
+    # AGENT RECOMMENDATION
     # ========================================================================
     
     # Check if system is ready
@@ -272,43 +280,82 @@ async def on_message(message: cl.Message):
         ).send()
         return
     
+    # Get or initialize message history
+    message_history = cl.user_session.get("message_history")
+    if message_history is None:
+        message_history = []
+        cl.user_session.set("message_history", message_history)
+    
+    # Add user message to history
+    message_history.append({
+        "role": "user",
+        "content": user_message
+    })
+    
     # Create streaming message
     response_msg = cl.Message(content="")
     await response_msg.send()
     
     try:
-        # Show thinking indicator
-        await response_msg.stream_token("🔍 Đang tìm kiếm địa điểm phù hợp...\n\n")
+        # Update tool context with user's visited locations
+        set_user_context(visited_ids=visited_ids, allow_revisit=allow_revisit)
         
-        # Generate recommendation with streaming
-        metadata = None
-        async for token, meta in generate_recommendation_stream(
-            vector_store=VECTOR_STORE,
-            llm=LLM,
-            user_query=user_message,
-            user_visited_ids=visited_ids,
-            allow_revisit=allow_revisit,
-            verbose=False
-        ):
-            await response_msg.stream_token(token)
-            metadata = meta  # Keep last metadata
+        # Prepare inputs for the agent
+        inputs = {
+            "messages": [("user", user_message)]
+        }
         
-        # Add footer with stats
-        if metadata:
-            footer = "\n\n---\n"
-            footer += f"📊 **Thống kê:**\n"
-            footer += f"- Địa điểm mới: {len(metadata['new_places'])}\n"
-            footer += f"- Địa điểm đã ghé: {len(metadata['old_places'])}\n"
-            footer += f"- Tổng địa điểm bạn đã ghé: {len(visited_ids)}\n"
+        # Configuration for the agent
+        config = {
+            "configurable": {
+                "thread_id": cl.user_session.get("id")
+            }
+        }
+        
+        # Stream agent response
+        logger.info(f"🤖 [AGENT START] Processing query: {user_message}")
+        logger.info(f"📋 User context: {len(visited_ids)} visited locations, allow_revisit={allow_revisit}")
+        
+        full_response = ""
+        tool_calls_count = 0
+        
+        async for event in agent.astream(inputs, config, stream_mode="values"):
+            last_message = event["messages"][-1]
             
-            if metadata['filtered_count'] > 0:
-                footer += f"- Đã lọc bỏ: {metadata['filtered_count']} địa điểm đã ghé\n"
+            # Log tool calls
+            if last_message.type == "tool":
+                tool_calls_count += 1
+                logger.info(f"🔧 [TOOL CALL #{tool_calls_count}] Agent is calling tool: {last_message.name if hasattr(last_message, 'name') else 'Unknown'}")
             
-            await response_msg.stream_token(footer)
+            if last_message.type == "ai":
+                # Log if AI is about to call tools
+                if hasattr(last_message, "tool_calls") and last_message.tool_calls:
+                    for tool_call in last_message.tool_calls:
+                        logger.info(f"🔧 [TOOL REQUEST] Agent requesting tool: {tool_call.get('name', 'Unknown')}")
+                        logger.info(f"   Args: {tool_call.get('args', {})}")
+                
+                # Stream content from AI
+                if hasattr(last_message, "content") and last_message.content:
+                    # Only stream the new part of the content
+                    if len(last_message.content) > len(full_response):
+                        new_content = last_message.content[len(full_response):]
+                        await response_msg.stream_token(new_content)
+                        full_response = last_message.content
         
+        # Update message history with agent response
+        if full_response:
+            message_history.append({
+                "role": "assistant",
+                "content": full_response
+            })
+            cl.user_session.set("message_history", message_history)
+        
+        # Update message in UI
         await response_msg.update()
+        logger.info(f"✅ [AGENT COMPLETE] Response completed (Tool calls: {tool_calls_count})")
         
     except Exception as e:
+        logger.error(f"❌ Error: {str(e)}")
         error_msg = (
             f"❌ Xin lỗi, đã có lỗi xảy ra khi xử lý yêu cầu của bạn.\n\n"
             f"Chi tiết lỗi: {str(e)}\n\n"
@@ -316,7 +363,6 @@ async def on_message(message: cl.Message):
         )
         await response_msg.stream_token(error_msg)
         await response_msg.update()
-
 
 # ============================================================================
 # ERROR HANDLER
