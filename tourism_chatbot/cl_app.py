@@ -25,9 +25,14 @@ from tourism_chatbot.rag.rag_engine import (
     initialize_rag_system,
 )
 
-# Import the agent
-from tourism_chatbot.agents.tourism_agent import agent
-from tourism_chatbot.agents.tools import set_user_context
+# Import database and memory modules
+from tourism_chatbot.memory import UserContextManager
+from tourism_chatbot.agents.tools import set_user_context, retrieve_context
+from tourism_chatbot.utils import format_thread_id
+from tourism_chatbot.database import get_async_connection_pool, initialize_async_checkpointer
+
+# Import agent factory
+from tourism_chatbot.agents.tourism_agent import create_tourism_agent
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -41,6 +46,15 @@ logger = logging.getLogger(__name__)
 VECTOR_STORE = None
 LLM = None
 EMBEDDINGS = None
+AGENT_WITH_MEMORY = None
+ASYNC_POOL = None
+ASYNC_CHECKPOINTER = None
+
+# Test mode configuration
+# Set these environment variables to use predefined user/thread IDs for testing
+TEST_MODE = os.getenv("CHAINLIT_TEST_MODE", "false").lower() == "true"
+TEST_USER_ID = os.getenv("CHAINLIT_TEST_USER_ID", "00000000-0000-0000-0000-000000000001")
+TEST_THREAD_ID = os.getenv("CHAINLIT_TEST_THREAD_ID", "00000000-0000-0000-0000-000000000002")
 
 
 # ============================================================================
@@ -54,10 +68,12 @@ async def on_chat_start():
     
     This function:
     1. Loads the RAG system (vector store, LLM, embeddings)
-    2. Initializes user session state (visited_ids, allow_revisit)
-    3. Sends welcome message
+    2. Initializes database connection and checkpointer
+    3. Creates agent with memory capabilities
+    4. Initializes user session state (visited_ids, allow_revisit)
+    5. Sends welcome message
     """
-    global VECTOR_STORE, LLM, EMBEDDINGS
+    global VECTOR_STORE, LLM, EMBEDDINGS, AGENT_WITH_MEMORY, ASYNC_POOL, ASYNC_CHECKPOINTER
     
     # Show loading message
     loading_msg = cl.Message(content="")
@@ -66,38 +82,70 @@ async def on_chat_start():
     try:
         # Initialize RAG system if not already loaded
         if VECTOR_STORE is None or LLM is None:
-            await loading_msg.stream_token("🚀 Đang khởi động hệ thống RAG...\n\n")
-            
             # Get API key from environment
             api_key = os.getenv("GEMINI_API_KEY")
             if not api_key:
-                await loading_msg.stream_token(
+                loading_msg.content = (
                     "⚠️ Cảnh báo: Không tìm thấy GEMINI_API_KEY trong biến môi trường.\n"
-                    "Vui lòng thiết lập API key để sử dụng chatbot.\n\n"
+                    "Vui lòng thiết lập API key để sử dụng chatbot."
                 )
+                await loading_msg.update()
                 return
             
-            await loading_msg.stream_token("📂 Đang tải dữ liệu địa danh...\n")
-            await loading_msg.stream_token("🤖 Đang khởi động mô hình embedding...\n")
-            await loading_msg.stream_token("🧠 Đang kết nối với Gemini LLM...\n\n")
+            loading_msg.content = "🚀 Đang khởi động hệ thống RAG..."
+            await loading_msg.update()
             
-            # Initialize system
+            # Initialize RAG system
             VECTOR_STORE, LLM, EMBEDDINGS = initialize_rag_system(api_key=api_key)
+        
+        # Initialize async database pool and checkpointer
+        if ASYNC_POOL is None:
+            loading_msg.content = "🗄️ Đang kết nối database..."
+            await loading_msg.update()
             
-            await loading_msg.stream_token("✅ Hệ thống đã sẵn sàng!\n\n")
+            ASYNC_POOL = get_async_connection_pool()
+            await ASYNC_POOL.open()
+            logger.info("Async connection pool opened")
+            
+            ASYNC_CHECKPOINTER = await initialize_async_checkpointer(ASYNC_POOL)
+            logger.info("Async checkpointer initialized")
+        
+        # Initialize agent with memory if not already loaded
+        if AGENT_WITH_MEMORY is None:
+            loading_msg.content = "🤖 Đang khởi tạo agent với bộ nhớ..."
+            await loading_msg.update()
+            
+            AGENT_WITH_MEMORY = create_tourism_agent(checkpointer=ASYNC_CHECKPOINTER)
+            logger.info("Agent with memory created")
         
         # Initialize user session state
+        # In test mode, use predefined user_id and thread_id
+        if TEST_MODE:
+            user_id = TEST_USER_ID
+            thread_id = TEST_THREAD_ID
+            logger.info(f"🧪 TEST MODE: Using user_id={user_id}, thread_id={thread_id}")
+        else:
+            user_id = cl.user_session.get("id")
+            thread_id = format_thread_id(user_id)
+        
         cl.user_session.set("visited_ids", [])
         cl.user_session.set("allow_revisit", False)
-        cl.user_session.set("message_history", [])
+        cl.user_session.set("thread_id", thread_id)
         
-        # Send welcome message
-        await loading_msg.stream_token(
+        # Initialize user context manager
+        user_context = UserContextManager(user_id=user_id)
+        cl.user_session.set("user_context", user_context)
+        
+        logger.info(f"User session initialized: {user_id} | thread_id: {thread_id}")
+        
+        # Build complete welcome message
+        welcome_content = (
             "👋 Xin chào! Tôi là trợ lý du lịch thông minh của Việt Nam.\n\n"
             "Tôi có thể giúp bạn:\n"
             "✨ Tìm kiếm địa điểm du lịch phù hợp\n"
             "🗺️ Gợi ý những nơi mới dựa trên sở thích\n"
-            "📝 Ghi nhớ những nơi bạn đã đến\n\n"
+            "📝 Ghi nhớ những nơi bạn đã đến\n"
+            "💬 Nhớ ngữ cảnh cuộc hội thoại của bạn\n\n"
             "**Cách sử dụng:**\n"
             "- Hỏi tôi về địa điểm: *\"Tìm bãi biển đẹp ở miền Trung\"*\n"
             "- Báo nơi đã đến: *\"Tôi đã từng đến Hội An\"*\n"
@@ -106,15 +154,17 @@ async def on_chat_start():
             "Hãy thử hỏi tôi bất cứ điều gì về du lịch Việt Nam! 🇻🇳"
         )
         
+        # Set content and update once
+        loading_msg.content = welcome_content
         await loading_msg.update()
         
     except Exception as e:
-        await loading_msg.stream_token(
+        loading_msg.content = (
             f"❌ Lỗi khi khởi động hệ thống: {str(e)}\n\n"
             "Vui lòng kiểm tra:\n"
             "1. GEMINI_API_KEY đã được thiết lập\n"
             "2. File dữ liệu CSV tồn tại\n"
-            "3. Kết nối internet ổn định\n"
+            "3. Kết nối internet ổn định"
         )
         await loading_msg.update()
 
@@ -225,7 +275,10 @@ async def on_message(message: cl.Message):
     visited_locations = detect_visited_command(user_message)
     if visited_locations:
         # User is reporting visited locations
-        from rag.rag_engine import slugify
+        from tourism_chatbot.rag.rag_engine import slugify
+        
+        # Get user context
+        user_context = cl.user_session.get("user_context")
         
         new_ids = []
         for location in visited_locations:
@@ -233,6 +286,9 @@ async def on_message(message: cl.Message):
             if loc_id not in visited_ids:
                 visited_ids.append(loc_id)
                 new_ids.append(location)
+                # Also update context manager
+                if user_context:
+                    user_context.add_visited(loc_id)
         
         # Update session
         cl.user_session.set("visited_ids", visited_ids)
@@ -253,14 +309,20 @@ async def on_message(message: cl.Message):
     # Check for allow/disallow revisit command
     revisit_cmd = detect_allow_revisit_command(user_message)
     if revisit_cmd != "none":
+        user_context = cl.user_session.get("user_context")
+        
         if revisit_cmd == "allow":
             cl.user_session.set("allow_revisit", True)
+            if user_context:
+                user_context.set_allow_revisit(True)
             response = (
                 "✅ Đã bật chế độ cho phép gợi ý lại!\n\n"
                 "Tôi sẽ gợi ý cả những địa điểm bạn đã từng đến."
             )
         else:  # disallow
             cl.user_session.set("allow_revisit", False)
+            if user_context:
+                user_context.set_allow_revisit(False)
             response = (
                 "✅ Đã tắt chế độ gợi ý lại!\n\n"
                 "Tôi sẽ chỉ gợi ý những địa điểm mới mà bạn chưa đến."
@@ -274,23 +336,15 @@ async def on_message(message: cl.Message):
     # ========================================================================
     
     # Check if system is ready
-    if VECTOR_STORE is None or LLM is None:
+    if AGENT_WITH_MEMORY is None:
         await cl.Message(
             content="❌ Hệ thống chưa sẵn sàng. Vui lòng khởi động lại chat."
         ).send()
         return
     
-    # Get or initialize message history
-    message_history = cl.user_session.get("message_history")
-    if message_history is None:
-        message_history = []
-        cl.user_session.set("message_history", message_history)
-    
-    # Add user message to history
-    message_history.append({
-        "role": "user",
-        "content": user_message
-    })
+    # Get user context
+    user_context = cl.user_session.get("user_context")
+    thread_id = cl.user_session.get("thread_id")
     
     # Create streaming message
     response_msg = cl.Message(content="")
@@ -305,21 +359,24 @@ async def on_message(message: cl.Message):
             "messages": [("user", user_message)]
         }
         
-        # Configuration for the agent
+        # Configuration for the agent (with thread_id for memory)
         config = {
             "configurable": {
-                "thread_id": cl.user_session.get("id")
+                "thread_id": thread_id
             }
         }
         
         # Stream agent response
         logger.info(f"🤖 [AGENT START] Processing query: {user_message}")
         logger.info(f"📋 User context: {len(visited_ids)} visited locations, allow_revisit={allow_revisit}")
+        logger.info(f"🔑 Thread ID: {thread_id}")
+        if TEST_MODE:
+            logger.info(f"🧪 TEST MODE ACTIVE")
         
         full_response = ""
         tool_calls_count = 0
         
-        async for event in agent.astream(inputs, config, stream_mode="values"):
+        async for event in AGENT_WITH_MEMORY.astream(inputs, config, stream_mode="values"):
             last_message = event["messages"][-1]
             
             # Log tool calls
@@ -342,26 +399,22 @@ async def on_message(message: cl.Message):
                         await response_msg.stream_token(new_content)
                         full_response = last_message.content
         
-        # Update message history with agent response
-        if full_response:
-            message_history.append({
-                "role": "assistant",
-                "content": full_response
-            })
-            cl.user_session.set("message_history", message_history)
-        
         # Update message in UI
         await response_msg.update()
         logger.info(f"✅ [AGENT COMPLETE] Response completed (Tool calls: {tool_calls_count})")
         
+        # Log user context stats
+        if user_context:
+            stats = user_context.get_stats()
+            logger.info(f"📊 User stats: {stats}")
+        
     except Exception as e:
         logger.error(f"❌ Error: {str(e)}")
-        error_msg = (
+        response_msg.content = (
             f"❌ Xin lỗi, đã có lỗi xảy ra khi xử lý yêu cầu của bạn.\n\n"
             f"Chi tiết lỗi: {str(e)}\n\n"
             f"Vui lòng thử lại hoặc liên hệ quản trị viên."
         )
-        await response_msg.stream_token(error_msg)
         await response_msg.update()
 
 # ============================================================================
