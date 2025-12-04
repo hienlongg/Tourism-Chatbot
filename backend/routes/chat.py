@@ -4,7 +4,7 @@ Provides REST API endpoints for the tourism chatbot functionality.
 """
 
 from flask import Blueprint, request, jsonify, session, Response, stream_with_context
-from backend.middlewares.auth import login_required
+from backend.middlewares.decorators import login_required
 from tourism_chatbot.agents.tools import set_user_context, retrieve_context
 from tourism_chatbot.memory import UserContextManager
 from tourism_chatbot.rag.rag_engine import slugify
@@ -366,7 +366,7 @@ def send_message_stream():
         }), 400
     
     # Get user info from session
-    user_id = session.get('UserID', 'anonymous')
+    user_id = session.get('user_id', 'anonymous')
     chat_context = get_user_context_from_session()
     visited_ids = chat_context.get('visited_ids', [])
     allow_revisit = chat_context.get('allow_revisit', False)
@@ -391,8 +391,8 @@ def send_message_stream():
             full_response = ""
             
             # Stream from agent
-            for event in _AGENT_WITH_MEMORY.stream(inputs, config, stream_mode="values"):
-                last_message = event["messages"][-1]
+            for event in _AGENT_WITH_MEMORY.stream(inputs, config, stream_mode="updates"):
+                last_message = event["model"]["messages"][-1]
                 
                 if last_message.type == "ai":
                     if hasattr(last_message, "content") and last_message.content:

@@ -5,7 +5,7 @@ Handles user registration, login, logout, and session management.
 
 from flask import Blueprint, request, session, jsonify
 from backend.models import UserModel
-from backend.middlewares import login_required, guest_only
+from backend.middlewares.decorators import login_required, guest_only
 from backend.utils import validate_email, validate_password
 
 # Create authentication blueprint
@@ -27,8 +27,8 @@ def register():
         400: Validation error or email already exists
     """
     data = request.get_json()
-    email = data.get('Email')
-    plain_password = data.get('PlainPassword')
+    email = data.get('email')
+    plain_password = data.get('plain_password')
     
     # Validate email
     is_valid, error_msg = validate_email(email)
@@ -41,7 +41,7 @@ def register():
         return jsonify({"message": error_msg}), 400
     
     # Check if email already exists
-    if UserModel.objects(Email=email).first():
+    if UserModel.objects(email=email).first():
         return jsonify({"message": "Email already exists"}), 400
     
     # Create and save new user
@@ -51,9 +51,9 @@ def register():
     return jsonify({
         "message": "User registered successfully",
         "user": {
-            "UserID": str(new_user.UserID),
-            "Email": email,
-            "Role": new_user.Role
+            "user_id": str(new_user.user_id),
+            "email": email,
+            "role": new_user.role
         }
     }), 201
 
@@ -72,11 +72,11 @@ def login():
         401: Invalid credentials
     """
     data = request.get_json()
-    email = data.get('Email')
-    plain_password = data.get('PlainPassword')
+    email = data.get('email')
+    plain_password = data.get('plain_password')
     
     # Find user by email
-    user = UserModel.objects(Email=email).first()
+    user = UserModel.objects(email=email).first()
     if not user:
         return jsonify({"message": "Invalid credentials"}), 401
     
@@ -85,17 +85,17 @@ def login():
         return jsonify({"message": "Invalid credentials"}), 401
     
     # Create session
-    session['UserID'] = str(user.UserID)
-    session['Email'] = email
-    session['Role'] = user.Role
+    session['user_id'] = str(user.user_id)
+    session['email'] = email
+    session['role'] = user.role
     session.permanent = True
     
     return jsonify({
         "message": "Login successful",
         "user": {
-            "UserID": str(user.UserID),
-            "Email": email,
-            "Role": user.Role
+            "user_id": str(user.user_id),
+            "email": email,
+            "role": user.role
         }
     }), 200
 
@@ -124,8 +124,8 @@ def get_current_user():
     """
     return jsonify({
         "user": {
-            "UserID": session['UserID'],
-            "Email": session['Email'],
-            "Role": session['Role']
+            "user_id": session['user_id'],
+            "email": session['email'],
+            "role": session['role']
         }
     }), 200

@@ -12,14 +12,15 @@ from werkzeug.security import generate_password_hash, check_password_hash
 class UserModel(Document):
     """User model for storing authentication data."""
     
-    UserID = ObjectIdField(primary_key=True, default=ObjectId)
-    Email = StringField(required=True, unique=True)
-    HashedPassword = StringField(required=True)
-    Role = StringField(
+    user_id = ObjectIdField(primary_key=True, default=ObjectId, db_field="UserID")
+    email = StringField(required=True, unique=True, db_field="Email")
+    hashed_password = StringField(required=True, db_field="HashedPassword")
+    role = StringField(
         choices=["Student", "Counsellor", "AI"],
-        default="Student"
+        default="Student",
+        db_field="Role"
     )
-    CreatedAt = DateTimeField(default=lambda: datetime.now(timezone.utc))
+    created_at = DateTimeField(default=lambda: datetime.now(timezone.utc), db_field="CreatedAt")
     
     meta = {
         "db_alias": "AuthenticationDB",
@@ -43,7 +44,7 @@ class UserModel(Document):
             method="pbkdf2:sha256",
             salt_length=16
         )
-        return cls(Email=email, HashedPassword=hashed)
+        return cls(email=email, hashed_password=hashed)
     
     def check_password(self, plain_password: str) -> bool:
         """
@@ -55,4 +56,4 @@ class UserModel(Document):
         Returns:
             True if password matches, False otherwise
         """
-        return check_password_hash(self.HashedPassword, plain_password)
+        return check_password_hash(self.hashed_password, plain_password)
