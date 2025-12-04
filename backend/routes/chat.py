@@ -4,7 +4,7 @@ Provides REST API endpoints for the tourism chatbot functionality.
 """
 
 from flask import Blueprint, request, jsonify, session, Response, stream_with_context
-from middlewares.auth import login_required
+from backend.middlewares.auth import login_required
 from tourism_chatbot.agents.tools import set_user_context, retrieve_context
 from tourism_chatbot.memory import UserContextManager
 from tourism_chatbot.rag.rag_engine import slugify

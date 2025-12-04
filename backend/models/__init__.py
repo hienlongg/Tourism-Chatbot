@@ -6,7 +6,7 @@ Exports all database models and initializes MongoDB connections.
 from mongoengine import connect
 from .user import UserModel
 from .chat import ConversationModel, MessageModel, LastMessageModel
-from tourism_chatbot.config import Config
+from config import Config
 
 # Initialize MongoDB connections
 connect(

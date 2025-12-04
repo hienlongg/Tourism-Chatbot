@@ -4,9 +4,9 @@ Handles user registration, login, logout, and session management.
 """
 
 from flask import Blueprint, request, session, jsonify
-from models import UserModel
-from middlewares import login_required, guest_only
-from utils import validate_email, validate_password
+from backend.models import UserModel
+from backend.middlewares import login_required, guest_only
+from backend.utils import validate_email, validate_password
 
 # Create authentication blueprint
 auth_bp = Blueprint('auth', __name__, url_prefix='/api/auth')

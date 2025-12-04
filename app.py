@@ -7,8 +7,8 @@ from flask import Flask, jsonify
 from flask_session import Session
 from flask_cors import CORS
 from pymongo import MongoClient
-from tourism_chatbot.config import Config
-from routes import auth_bp, chat_bp, init_chatbot
+from config import Config
+from backend.routes import auth_bp, chat_bp, init_chatbot
 import logging
 import os
 
