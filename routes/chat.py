@@ -366,7 +366,7 @@ def send_message_stream():
         }), 400
     
     # Get user info from session
-    user_id = session.get('user_id', 'anonymous')
+    user_id = session.get('UserID', 'anonymous')
     chat_context = get_user_context_from_session()
     visited_ids = chat_context.get('visited_ids', [])
     allow_revisit = chat_context.get('allow_revisit', False)

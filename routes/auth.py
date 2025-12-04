@@ -9,7 +9,7 @@ from middlewares import login_required, guest_only
 from utils import validate_email, validate_password
 
 # Create authentication blueprint
-auth_bp = Blueprint('auth', __name__, url_prefix='/auth')
+auth_bp = Blueprint('auth', __name__, url_prefix='/api/auth')
 
 
 @auth_bp.route('/register', methods=['POST'])
@@ -59,7 +59,6 @@ def register():
 
 
 @auth_bp.route('/login', methods=['POST'])
-@guest_only
 def login():
     """
     Login user and create session.
