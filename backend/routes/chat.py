@@ -390,18 +390,22 @@ def send_message_stream():
             
             full_response = ""
             
-            # Stream from agent
-            for event in _AGENT_WITH_MEMORY.stream(inputs, config, stream_mode="updates"):
-                last_message = event["model"]["messages"][-1]
-                
-                if last_message.type == "ai":
-                    if hasattr(last_message, "content") and last_message.content:
-                        if len(last_message.content) > len(full_response):
-                            new_content = last_message.content[len(full_response):]
-                            full_response = last_message.content
-                            
-                            # Send SSE event
-                            yield f"data: {json.dumps({'token': new_content})}\n\n"
+            # Stream from agent with default stream mode
+            for event in _AGENT_WITH_MEMORY.stream(inputs, config):
+                # Extract messages from the event
+                if "model" in event:
+                    messages = event["model"]["messages"]
+                    if messages:
+                        last_message = messages[-1]
+                        
+                        if last_message.type == "ai":
+                            if hasattr(last_message, "content") and last_message.content:
+                                if len(last_message.content) > len(full_response):
+                                    new_content = last_message.content[len(full_response):]
+                                    full_response = last_message.content
+                                    
+                                    # Send SSE event
+                                    yield f"data: {json.dumps({'token': new_content})}\n\n"
             
             # Send completion event
             yield f"data: {json.dumps({'done': True, 'metadata': {'visited_count': len(visited_ids), 'allow_revisit': allow_revisit}})}\n\n"
