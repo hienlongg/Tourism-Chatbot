@@ -170,7 +170,8 @@ def send_message():
     
     Request body:
         {
-            "message": "User's message"
+            "message": "User's message",
+            "imageUrl": "/uploads/image_filename.jpg" (optional)
         }
     
     Response:
@@ -180,7 +181,8 @@ def send_message():
             "type": "recommendation" | "command" | "error",
             "metadata": {
                 "visited_count": 0,
-                "allow_revisit": false
+                "allow_revisit": false,
+                "has_image": false
             }
         }
     """
@@ -208,6 +210,9 @@ def send_message():
             "error": "Message cannot be empty",
             "type": "error"
         }), 400
+    
+    # Get optional image URL
+    image_url = data.get('imageUrl', '').strip() if isinstance(data.get('imageUrl'), str) else ''
     
     # Get user info from session
     user_id = session.get('user_id', 'anonymous')
@@ -286,8 +291,16 @@ def send_message():
         # Process with agent
         set_user_context(visited_ids=visited_ids, allow_revisit=allow_revisit)
         
+        # Prepare message content
+        message_content = user_message
+        
+        # Add image context if provided
+        if image_url:
+            message_content = f"{user_message}\n\n[Image attached: {image_url}]"
+            logger.info(f"📸 Image attached to message: {image_url}")
+        
         inputs = {
-            "messages": [("user", user_message)]
+            "messages": [("user", message_content)]
         }
         
         config = {
@@ -313,7 +326,8 @@ def send_message():
             "type": "recommendation",
             "metadata": {
                 "visited_count": len(visited_ids),
-                "allow_revisit": allow_revisit
+                "allow_revisit": allow_revisit,
+                "has_image": bool(image_url)
             }
         }), 200
         
@@ -335,7 +349,8 @@ def send_message_stream():
     
     Request body:
         {
-            "message": "User's message"
+            "message": "User's message",
+            "imageUrl": "/uploads/image_filename.jpg" (optional)
         }
     
     Response: SSE stream with JSON data
@@ -365,6 +380,9 @@ def send_message_stream():
             "type": "error"
         }), 400
     
+    # Get optional image URL
+    image_url = data.get('imageUrl', '').strip() if isinstance(data.get('imageUrl'), str) else ''
+    
     # Get user info from session
     user_id = session.get('user_id', 'anonymous')
     chat_context = get_user_context_from_session()
@@ -378,8 +396,14 @@ def send_message_stream():
             # Set user context for tools
             set_user_context(visited_ids=visited_ids, allow_revisit=allow_revisit)
             
+            # Prepare message content with image if provided
+            message_content = [{"type": "text", "text": user_message}]
+            
+            if image_url:
+                message_content.append({"type": "image", "url": f"http://localhost:5173{image_url}"}) 
+            
             inputs = {
-                "messages": [("user", user_message)]
+                "messages": [("user", message_content)]
             }
             
             config = {
@@ -408,7 +432,7 @@ def send_message_stream():
                                     yield f"data: {json.dumps({'token': new_content})}\n\n"
             
             # Send completion event
-            yield f"data: {json.dumps({'done': True, 'metadata': {'visited_count': len(visited_ids), 'allow_revisit': allow_revisit}})}\n\n"
+            yield f"data: {json.dumps({'done': True, 'metadata': {'visited_count': len(visited_ids), 'allow_revisit': allow_revisit, 'has_image': bool(image_url)}})}\n\n"
             
         except Exception as e:
             logger.error(f"❌ Streaming error: {str(e)}")

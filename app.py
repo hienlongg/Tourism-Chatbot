@@ -8,7 +8,7 @@ from flask_session import Session
 from flask_cors import CORS
 from pymongo import MongoClient
 from config import Config
-from backend.routes import auth_bp, chat_bp, init_chatbot
+from backend.routes import auth_bp, chat_bp, upload_bp, init_chatbot
 import logging
 import os
 
@@ -35,6 +35,21 @@ CORS(app, supports_credentials=True, origins=Config.ALLOWED_ORIGINS)
 # Register blueprints
 app.register_blueprint(auth_bp)
 app.register_blueprint(chat_bp)
+app.register_blueprint(upload_bp)
+
+# Serve uploaded files as static content
+uploads_dir = os.path.join(os.path.dirname(__file__), 'uploads')
+if not os.path.exists(uploads_dir):
+    os.makedirs(uploads_dir)
+app.static_folder = None  # Disable default static folder
+@app.route('/uploads/<filename>')
+def serve_upload(filename):
+    """Serve uploaded files from the uploads directory."""
+    from flask import send_from_directory, abort
+    try:
+        return send_from_directory(uploads_dir, filename)
+    except Exception:
+        abort(404)
 
 
 def initialize_chatbot():
