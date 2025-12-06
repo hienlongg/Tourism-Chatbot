@@ -13,7 +13,7 @@ def login_required(f):
     """
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        if "UserID" not in session:
+        if "user_id" not in session:
             return jsonify({"message": "Authentication required"}), 401
         return f(*args, **kwargs)
     return decorated_function
@@ -26,7 +26,7 @@ def guest_only(f):
     """
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        if "UserID" in session:
+        if "user_id" in session:
             return jsonify({"message": "Already logged in"}), 400
         return f(*args, **kwargs)
     return decorated_function

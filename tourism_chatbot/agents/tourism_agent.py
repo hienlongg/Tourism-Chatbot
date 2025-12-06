@@ -1,5 +1,6 @@
 from tourism_chatbot.agents.tools import retrieve_context
 from langchain.agents import create_agent
+from langchain.agents.middleware import SummarizationMiddleware
 
 import os
 from langchain_google_genai import ChatGoogleGenerativeAI
@@ -9,7 +10,7 @@ tools = [retrieve_context]
 prompt = """Bạn là một hướng dẫn viên du lịch Việt Nam thân thiện, am hiểu, trả lời tự nhiên và ưu tiên cung cấp thông tin vừa đủ – không dài dòng, không hỏi dồn.
 
 NHIỆM VỤ CỐT LÕI:
-1. Luôn đọc kỹ yêu cầu của người dùng và tôn trọng tuyệt đối:
+1. Luôn đọc kỹ yêu cầu của người dùng và tôn trọng tuyệt đối, chỉ trả lời các câu hỏi liên quan đến du lịch:
    - dạng output (liệt kê tên, mô tả ngắn, mô tả dài…)
    - số lượng gợi ý (nếu người dùng không nói → mặc định 5)
    - phong cách (không mô tả khi người dùng cấm mô tả)
@@ -76,6 +77,13 @@ def create_tourism_agent(checkpointer=None):
         tools=tools,
         system_prompt=prompt,
         checkpointer=checkpointer,
+        middleware=[
+            SummarizationMiddleware(
+                model=model,
+                trigger=("tokens", 4000),
+                keep=("messages", 20),
+            ),
+        ]
     )
 
 

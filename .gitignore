@@ -10,3 +10,4 @@ docs/
 data/raw/crawled_images
 
 .vscode/
+uploads/
