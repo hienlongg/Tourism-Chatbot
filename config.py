@@ -70,7 +70,7 @@ class Config:
     ALLOWED_ORIGINS = os.getenv('ALLOWED_ORIGINS', 'http://localhost:5173').split(',')
     
     # Server Configuration
-    PORT = int(os.getenv('PORT', 5000))
+    PORT = int(os.getenv('PORT', '5000'))  # Render sets PORT as string, convert to int
     DEBUG = os.getenv('DEBUG', 'False').lower() == 'true'
     
     # Chatbot Configuration
