@@ -17,6 +17,13 @@ class Config:
     
     # MongoDB Configuration
     MONGODB_URI = os.getenv('MONGODB_URI')
+
+     # Database name for APP (Travel Log + Image Cache)
+    MONGODB_APP_DBNAME = os.getenv('MONGODB_APP_DBNAME', 'VoyAIage')
+
+    # Google Custom Search for image fetcher
+    GOOGLE_SEARCH_API_KEY = os.getenv("GOOGLE_SEARCH_API_KEY")
+    GOOGLE_CSE_CX = os.getenv("GOOGLE_CSE_CX")
     
     # PostgreSQL Configuration (for LangGraph checkpointer)
     PSQL_HOST = os.getenv('PSQL_HOST', 'localhost')

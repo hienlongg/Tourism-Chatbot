@@ -39,12 +39,19 @@ class UserModel(Document):
         Returns:
             UserModel instance (not saved to database yet)
         """
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"create_user called with email={email}, password_present={bool(plain_password)}")
+        
         hashed = generate_password_hash(
             plain_password,
             method="pbkdf2:sha256",
             salt_length=16
         )
-        return cls(email=email, hashed_password=hashed)
+        
+        user = cls(email=email, hashed_password=hashed)
+        logger.info(f"Created user object: email={user.email}, has_password={bool(user.hashed_password)}")
+        return user
     
     def check_password(self, plain_password: str) -> bool:
         """

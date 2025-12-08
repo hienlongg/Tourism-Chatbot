@@ -27,8 +27,24 @@ def register():
         400: Validation error or email already exists
     """
     data = request.get_json()
-    email = data.get('email')
-    plain_password = data.get('plain_password')
+    
+    # Debug logging
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.info(f"Registration request data: {data}")
+    
+    # Handle both lowercase and capitalized field names for compatibility
+    email = data.get('email') or data.get('Email')
+    plain_password = data.get('plain_password') or data.get('PlainPassword')
+    
+    logger.info(f"Extracted email: {email}, password present: {bool(plain_password)}")
+    
+    # Check if required fields are present
+    if not email:
+        return jsonify({"message": "Email is required"}), 400
+    
+    if not plain_password:
+        return jsonify({"message": "Password is required"}), 400
     
     # Validate email
     is_valid, error_msg = validate_email(email)
@@ -72,8 +88,14 @@ def login():
         401: Invalid credentials
     """
     data = request.get_json()
-    email = data.get('email')
-    plain_password = data.get('plain_password')
+    
+    # Handle both lowercase and capitalized field names for compatibility
+    email = data.get('email') or data.get('Email')
+    plain_password = data.get('plain_password') or data.get('PlainPassword')
+    
+    # Check if required fields are present
+    if not email or not plain_password:
+        return jsonify({"message": "Email and password are required"}), 400
     
     # Find user by email
     user = UserModel.objects(email=email).first()
