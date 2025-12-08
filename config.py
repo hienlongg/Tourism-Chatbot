@@ -26,11 +26,35 @@ class Config:
     GOOGLE_CSE_CX = os.getenv("GOOGLE_CSE_CX")
     
     # PostgreSQL Configuration (for LangGraph checkpointer)
+    # Priority: DATABASE_URL (Render) > Individual PSQL_* vars (Local)
     PSQL_HOST = os.getenv('PSQL_HOST', 'localhost')
     PSQL_PORT = os.getenv('PSQL_PORT', '5432')
     PSQL_USERNAME = os.getenv('PSQL_USERNAME')
     PSQL_PASSWORD = os.getenv('PSQL_PASSWORD')
     PSQL_DBNAME = os.getenv('PSQL_DBNAME')
+    
+    @classmethod
+    def get_database_uri(cls):
+        """
+        Get PostgreSQL database URI.
+        Supports both Render (DATABASE_URL) and local (PSQL_*) configurations.
+        """
+        database_url = os.getenv('DATABASE_URL')
+        if database_url:
+            # Render deployment - use DATABASE_URL directly
+            return database_url
+        else:
+            # Local development - construct from individual variables
+            username = cls.PSQL_USERNAME
+            password = cls.PSQL_PASSWORD
+            host = cls.PSQL_HOST
+            port = cls.PSQL_PORT
+            dbname = cls.PSQL_DBNAME
+            
+            if not all([username, password, host, port, dbname]):
+                raise ValueError("Missing PostgreSQL configuration. Set DATABASE_URL or PSQL_* environment variables.")
+            
+            return f"postgresql+psycopg://{username}:{password}@{host}:{port}/{dbname}"
     
     # Gemini API Configuration
     GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
