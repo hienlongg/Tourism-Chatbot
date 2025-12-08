@@ -8,7 +8,7 @@ from flask_session import Session
 from flask_cors import CORS
 from pymongo import MongoClient
 from config import Config
-from backend.routes import auth_bp, chat_bp, upload_bp, init_chatbot
+from backend.routes import auth_bp, chat_bp, upload_bp, init_chatbot, travel_log_bp
 import logging
 import os
 
@@ -26,6 +26,10 @@ app.config["SESSION_MONGODB"] = mongo_client
 app.config["SESSION_MONGODB_DB"] = "Authentication"
 app.config["SESSION_MONGODB_COLLECT"] = "Sessions"
 
+# Reuse the same Mongo client for application data (travel log, locations, ...)
+app.config["APP_MONGO_CLIENT"] = mongo_client
+app.config["APP_MONGO_DBNAME"] = getattr(Config, "MONGODB_APP_DBNAME", "VoyAIage")
+
 # Initialize Flask-Session
 Session(app)
 
@@ -36,6 +40,7 @@ CORS(app, supports_credentials=True, origins=Config.ALLOWED_ORIGINS)
 app.register_blueprint(auth_bp)
 app.register_blueprint(chat_bp)
 app.register_blueprint(upload_bp)
+app.register_blueprint(travel_log_bp)
 
 # Serve uploaded files as static content
 uploads_dir = os.path.join(os.path.dirname(__file__), 'uploads')

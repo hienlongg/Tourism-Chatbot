@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 import csv
 import re
 import unicodedata
@@ -27,12 +28,195 @@ CSV_PATH = (
 # Possible columns that may contain the name of the landmark
 NAME_COLUMNS = ["TenDiaDanh", "enDiaDanh", "DiaDanh"]
 
+VIETNAM_PROVINCES = [
+    "An Giang",
+    "Bà Rịa - Vũng Tàu",
+    "Bạc Liêu",
+    "Bắc Giang",
+    "Bắc Kạn",
+    "Bắc Ninh",
+    "Bến Tre",
+    "Bình Dương",
+    "Bình Định",
+    "Bình Phước",
+    "Bình Thuận",
+    "Cà Mau",
+    "Cao Bằng",
+    "Cần Thơ",
+    "Đà Nẵng",
+    "Đắk Lắk",
+    "Đắk Nông",
+    "Điện Biên",
+    "Đồng Nai",
+    "Đồng Tháp",
+    "Gia Lai",
+    "Hà Giang",
+    "Hà Nam",
+    "Hà Nội",
+    "Hà Tĩnh",
+    "Hải Dương",
+    "Hải Phòng",
+    "Hậu Giang",
+    "Hòa Bình",
+    "Hưng Yên",
+    "Khánh Hòa",
+    "Kiên Giang",
+    "Kon Tum",
+    "Lai Châu",
+    "Lạng Sơn",
+    "Lào Cai",
+    "Lâm Đồng",
+    "Long An",
+    "Nam Định",
+    "Nghệ An",
+    "Ninh Bình",
+    "Ninh Thuận",
+    "Phú Thọ",
+    "Phú Yên",
+    "Quảng Bình",
+    "Quảng Nam",
+    "Quảng Ngãi",
+    "Quảng Ninh",
+    "Quảng Trị",
+    "Sóc Trăng",
+    "Sơn La",
+    "Tây Ninh",
+    "Thái Bình",
+    "Thái Nguyên",
+    "Thanh Hóa",
+    "Thừa Thiên Huế",
+    "Tiền Giang",
+    "Thành phố Hồ Chí Minh",
+    "Trà Vinh",
+    "Tuyên Quang",
+    "Vĩnh Long",
+    "Vĩnh Phúc",
+    "Yên Bái",
+]
+
+PROVINCE_SYNONYMS = {
+    "Sài Gòn": "Thành phố Hồ Chí Minh",
+    "TP Hồ Chí Minh": "Thành phố Hồ Chí Minh",
+    "TP. Hồ Chí Minh": "Thành phố Hồ Chí Minh",
+    "TP HCM": "Thành phố Hồ Chí Minh",
+    "HCM": "Thành phố Hồ Chí Minh",
+    "Vũng Tàu": "Bà Rịa - Vũng Tàu",
+    "BRVT": "Bà Rịa - Vũng Tàu",
+}
+
+VIETNAM_TOURISM_CITIES = [
+    "Đà Lạt",
+    "Nha Trang",
+    "Hội An",
+    "Huế",
+    "Sa Pa",
+    "Phan Thiết",
+    "Phú Quốc",
+    "Vũng Tàu",
+    "Đà Nẵng",  
+    "Hạ Long",
+]
+
+# ============================================================
+# VIETNAM REGIONS (PROVINCES + COMMON CITY DESTINATIONS)
+# ============================================================
+
+VIETNAM_PROVINCES = [
+    "An Giang",
+    "Bà Rịa - Vũng Tàu",
+    "Bạc Liêu",
+    "Bắc Giang",
+    "Bắc Kạn",
+    "Bắc Ninh",
+    "Bến Tre",
+    "Bình Dương",
+    "Bình Định",
+    "Bình Phước",
+    "Bình Thuận",
+    "Cà Mau",
+    "Cao Bằng",
+    "Cần Thơ",
+    "Đà Nẵng",
+    "Đắk Lắk",
+    "Đắk Nông",
+    "Điện Biên",
+    "Đồng Nai",
+    "Đồng Tháp",
+    "Gia Lai",
+    "Hà Giang",
+    "Hà Nam",
+    "Hà Nội",
+    "Hà Tĩnh",
+    "Hải Dương",
+    "Hải Phòng",
+    "Hậu Giang",
+    "Hòa Bình",
+    "Hưng Yên",
+    "Khánh Hòa",
+    "Kiên Giang",
+    "Kon Tum",
+    "Lai Châu",
+    "Lạng Sơn",
+    "Lào Cai",
+    "Lâm Đồng",
+    "Long An",
+    "Nam Định",
+    "Nghệ An",
+    "Ninh Bình",
+    "Ninh Thuận",
+    "Phú Thọ",
+    "Phú Yên",
+    "Quảng Bình",
+    "Quảng Nam",
+    "Quảng Ngãi",
+    "Quảng Ninh",
+    "Quảng Trị",
+    "Sóc Trăng",
+    "Sơn La",
+    "Tây Ninh",
+    "Thái Bình",
+    "Thái Nguyên",
+    "Thanh Hóa",
+    "Thừa Thiên Huế",
+    "Tiền Giang",
+    "Thành phố Hồ Chí Minh",
+    "Trà Vinh",
+    "Tuyên Quang",
+    "Vĩnh Long",
+    "Vĩnh Phúc",
+    "Yên Bái",
+]
+
+PROVINCE_SYNONYMS = {
+    "Sài Gòn": "Thành phố Hồ Chí Minh",
+    "TP Hồ Chí Minh": "Thành phố Hồ Chí Minh",
+    "TP. Hồ Chí Minh": "Thành phố Hồ Chí Minh",
+    "TP HCM": "Thành phố Hồ Chí Minh",
+    "HCM": "Thành phố Hồ Chí Minh",
+    "Vũng Tàu": "Bà Rịa - Vũng Tàu",
+    "BRVT": "Bà Rịa - Vũng Tàu",
+}
+
+# Famous tourism cities that we also accept as region hints
+VIETNAM_TOURISM_CITIES = [
+    "Đà Lạt",
+    "Nha Trang",
+    "Hội An",
+    "Huế",
+    "Sa Pa",
+    "Phan Thiết",
+    "Phú Quốc",
+    "Vũng Tàu",
+    "Đà Nẵng",
+    "Hạ Long",
+]
+
 # ============================================================
 # LOAD CSV INTO MEMORY (cached)
 # ============================================================
 
 @lru_cache(maxsize=1)
-def _load_locations() -> List[Dict[str, str]]:
+def load_locations() -> List[Dict[str, str]]:
     """
     Load the entire CSV file into memory and normalize column names.
     This runs only once due to caching.
@@ -67,44 +251,97 @@ OSM_EMAIL = "nchin3107@gmail.com"
 OSM_DISABLED = False
 
 @lru_cache(maxsize=256)
-def _search_osm_location(name: str, context: str = DEFAULT_OSM_CONTEXT) -> Optional[Dict[str, object]]:
+def search_osm_location(
+    name: str,
+    context: str = DEFAULT_OSM_CONTEXT,
+    region_hint: Optional[str] = None,
+) -> Optional[Dict[str, object]]:
     """
-    Search a location in OSM using multi-query fallback strategies.
-    Strategy order:
-      1. Direct query
-      2. Cleaned name (remove prefixes)
-      3. Split variants (Tam Cốc - Bích Động -> Tam Cốc)
+    Perform a structured search on the OpenStreetMap Nominatim API to resolve a
+    location name. This function uses multiple fallback strategies in order to
+    increase accuracy when dealing with noisy or ambiguous names.
+
+    Resolution strategy:
+      1. Query the raw name directly.
+      2. Remove common prefixes (e.g. "Khu du lịch", "Chùa", "Đền", etc.) and retry.
+      3. Generate split variants (e.g. "Tam Cốc - Bích Động" → "Tam Cốc").
+
+    Region-aware filtering:
+      If `region_hint` is provided (e.g., "Đà Lạt, Lâm Đồng"), the function:
+        - Appends this hint into the query text to improve search relevance.
+        - Expands the returned result set (limit=5) and performs a strict filter:
+              Every normalized component of the region_hint MUST appear
+              in the item's address or display_name.
+        - This prevents mismatches such as:
+              “Vườn Hoa Thành Phố” in Đà Lạt incorrectly resolving to Tây Ninh.
+
+    Returns:
+        A dictionary with resolved location data:
+            {
+                "name": <string>,
+                "address": <string>,
+                "lat": <float>,
+                "lng": <float>,
+                "description": None,
+                "imageUrl": None,
+                "source": "osm_fallback"
+            }
+        Or None if no valid match is found.
     """
 
     global OSM_DISABLED
     if OSM_DISABLED:
         return None
 
-    def normalize(text: str) -> str:
+    # -----------------------------
+    # Helper: normalize a string by
+    # removing accents + lowercasing
+    # -----------------------------
+    def _norm(text: str) -> str:
+        if not text:
+            return ""
         text = unicodedata.normalize("NFD", text)
-        return "".join(c for c in text if unicodedata.category(c) != "Mn").lower()
+        text = "".join(c for c in text if unicodedata.category(c) != "Mn")
+        return text.lower().strip()
 
-    # 1) Generate all fallback queries
-    queries = []
+    # ----------------------------------------------------------------------
+    # Normalize the region hint into searchable components
+    # Example: "Đà Lạt, Lâm Đồng" → ["da lat", "lam dong"]
+    # These are later used for strict filtering against OSM address fields.
+    # ----------------------------------------------------------------------
+    region_parts_norm: List[str] = []
+    if region_hint:
+        raw_parts = re.split(r"[,/|-]", region_hint)
+        for part in raw_parts:
+            p = part.strip()
+            if len(p) < 2:
+                continue
+            pn = _norm(p)
+            if pn in ("viet nam",):
+                continue
+            region_parts_norm.append(pn)
 
-    # Base direct query
-    queries.append(name)
+    # -----------------------------------------
+    # Generate all fallback name variants
+    # -----------------------------------------
+    queries: List[str] = []
+    queries.append(name)  # raw name
 
-    # Prefix cleaning
+    # Remove known prefixes (e.g. "Chùa", "Đền", "Khu du lịch") to make queries cleaner
     prefixes = [
         "khu du lich","quan the","danh thang","di tich","vuon quoc gia",
         "khu bao ton","trung tam","quang truong","pho co","nha tho",
         "chua","den","lang","ban","dong","hang","vinh","cong vien"
     ]
 
-    norm = normalize(name)
+    norm_name = _norm(name)
     for prefix in prefixes:
-        if norm.startswith(prefix + " "):
+        if norm_name.startswith(prefix + " "):
             cleaned = name[len(prefix) + 1:].strip()
             queries.append(cleaned)
             break
 
-    # Splitting
+    # Split variants: "A - B" → "A", "A, B" → "A"
     if " - " in name:
         queries.append(name.split(" - ")[0].strip())
     if "-" in name:
@@ -112,21 +349,32 @@ def _search_osm_location(name: str, context: str = DEFAULT_OSM_CONTEXT) -> Optio
     if "," in name:
         queries.append(name.split(",")[0].strip())
 
-    # Remove duplicates
+    # Ensure uniqueness
     queries = list(dict.fromkeys(queries))
 
     headers = {"User-Agent": OSM_USER_AGENT}
 
-    # Try each query until one succeeds
+    # ----------------------------------------------------------------------
+    # Try each variant until a region-valid match is found
+    # ----------------------------------------------------------------------
     for q in queries:
         if len(q) < 3:
             continue
 
-        query_text = f"{q}, {context}" if context else q
+        # If region_hint is present, embed it directly into the query context
+        # Example:
+        #   "Vườn hoa thành phố" + "Đà Lạt, Việt Nam"
+        if region_hint:
+            query_context = f"{region_hint}, {DEFAULT_OSM_CONTEXT}"
+        else:
+            query_context = context or DEFAULT_OSM_CONTEXT
+
+        query_text = f"{q}, {query_context}" if query_context else q
+
         params = {
             "q": query_text,
             "format": "jsonv2",
-            "limit": 1,
+            "limit": 5,
             "addressdetails": 1,
             "email": OSM_EMAIL,
         }
@@ -134,7 +382,7 @@ def _search_osm_location(name: str, context: str = DEFAULT_OSM_CONTEXT) -> Optio
         try:
             resp = requests.get(OSM_SEARCH_URL, params=params, headers=headers, timeout=8)
 
-            # Disabled due to 403
+            # If Nominatim blocks us (403), disable OSM entirely
             if resp.status_code == 403:
                 logger.warning(
                     f"[location_extractor][OSM] 403 Forbidden for '{query_text}'. Disabling OSM."
@@ -149,14 +397,41 @@ def _search_osm_location(name: str, context: str = DEFAULT_OSM_CONTEXT) -> Optio
             if not data:
                 continue
 
-            item = data[0]
-            lat = _parse_float(item.get("lat"))
-            lng = _parse_float(item.get("lon"))
+            # ----------------------------------------------------------------------
+            # Region-aware filtering:
+            # Among all returned items, pick the first one whose address contains
+            # ALL region components (if region_hint is provided).
+            # ----------------------------------------------------------------------
+            chosen_item = None
 
-            if lat is None or lng is None:
+            for item in data:
+                lat = parse_float(item.get("lat"))
+                lng = parse_float(item.get("lon"))
+                if lat is None or lng is None:
+                    continue
+
+                if region_parts_norm:
+                    addr = item.get("address", {}) or {}
+                    display = item.get("display_name", "") or ""
+
+                    # Combine all address fields into a single text blob
+                    addr_text = " ".join([display] + [str(v) for v in addr.values() if v])
+                    addr_norm = _norm(addr_text)
+
+                    # Every part of region_hint must appear in the address
+                    if not all(rp in addr_norm for rp in region_parts_norm):
+                        continue  # wrong province/city → skip
+
+                chosen_item = item
+                break  # valid match found
+
+            if not chosen_item:
+                # No item satisfied the region filter — try next fallback query
                 continue
 
-            address = item.get("display_name", "")
+            lat = parse_float(chosen_item.get("lat"))
+            lng = parse_float(chosen_item.get("lon"))
+            address = chosen_item.get("display_name", "") or ""
 
             logger.info(
                 f"[location_extractor][OSM] Matched fallback '{q}' → '{address}' (lat={lat}, lng={lng})"
@@ -176,13 +451,14 @@ def _search_osm_location(name: str, context: str = DEFAULT_OSM_CONTEXT) -> Optio
             logger.warning(f"[location_extractor][OSM] Error on '{q}': {e}")
             continue
 
+    # No valid result found
     return None
 
 # ============================================================
 # TEXT NORMALIZATION HELPERS
 # ============================================================
 
-def _normalize_text(s: str) -> str:
+def normalize_text(s: str) -> str:
     """Normalize text: lowercase, remove accents, keep only alphanumerics."""
     s = s.lower()
     s = unicodedata.normalize("NFD", s)
@@ -191,12 +467,24 @@ def _normalize_text(s: str) -> str:
     s = re.sub(r"\s+", " ", s).strip()
     return s
 
+def normalize_for_match(s: str) -> str:
+    """
+    Normalize text for loose substring matching:
+    - lowercase
+    - remove Vietnamese accents
+    """
+    if not s:
+        return ""
+    s = s.lower()
+    s = unicodedata.normalize("NFD", s)
+    return "".join(ch for ch in s if unicodedata.category(ch) != "Mn")
 
-def _tokenize(s: str) -> List[str]:
-    return _normalize_text(s).split()
+
+def tokenize(s: str) -> List[str]:
+    return normalize_text(s).split()
 
 
-def _extract_candidate_names(answer: str) -> List[str]:
+def extract_candidate_names(answer: str) -> List[str]:
     """
     Extract location names from chatbot output.
     Supports:
@@ -224,16 +512,21 @@ def _extract_candidate_names(answer: str) -> List[str]:
     # Clean overly long “names”
     cleaned = []
     for name in candidates:
-        if len(name.split()) > 8:
+        # Optionally strip leading numbering like "1. "
+        base_for_len = re.sub(r"^\d+[).\s-]+", "", name).strip()
+        # Only check the part before "(" to avoid dropping long formal names
+        base_for_len = base_for_len.split("(")[0].strip()
+
+        if len(base_for_len.split()) > 20:
             continue
-        if len(name) > 60:
+        if len(name) > 80:
             continue
         cleaned.append(name)
 
     return cleaned
 
 
-def _parse_float(value: Any) -> Optional[float]:
+def parse_float(value: Any) -> Optional[float]:
     """Convert string to float (supports comma decimal separators)."""
     if value is None:
         return None
@@ -244,21 +537,27 @@ def _parse_float(value: Any) -> Optional[float]:
         return None
 
 
-def _get_lat_lng(row: Dict[str, str]) -> (Optional[float], Optional[float]):
+def get_lat_lng(row: Dict[str, str]) -> (Optional[float], Optional[float]):
     """Retrieve latitude and longitude from multiple possible column names."""
     lat_keys = ["lat", "Lat", "LAT", "latitude", "Latitude", "LATITUDE"]
     lng_keys = ["lng", "Lng", "lon", "Lon", "LON", "long", "Long", "longitude", "Longitude"]
 
-    lat = next(( _parse_float(row.get(k)) for k in lat_keys if k in row and _parse_float(row.get(k)) is not None ), None)
-    lng = next(( _parse_float(row.get(k)) for k in lng_keys if k in row and _parse_float(row.get(k)) is not None ), None)
+    lat = next(
+        (parse_float(row.get(k)) for k in lat_keys if k in row and parse_float(row.get(k)) is not None),
+        None,
+    )
+    lng = next(
+        (parse_float(row.get(k)) for k in lng_keys if k in row and parse_float(row.get(k)) is not None),
+        None,
+    )
 
     return lat, lng
 
 # ============================================================
-# MATCHING LOGIC
+# MATCHING LOGIC (CSV)
 # ============================================================
 
-def _get_row_name(row: Dict[str, str]) -> str:
+def get_row_name(row: Dict[str, str]) -> str:
     """Return the first available name column in priority order."""
     for col in NAME_COLUMNS:
         if row.get(col):
@@ -266,7 +565,7 @@ def _get_row_name(row: Dict[str, str]) -> str:
     return ""
 
 
-def _find_best_match(
+def find_best_match(
     name: str, rows: List[Dict[str, str]], min_score: float = 0.75
 ) -> Optional[Dict[str, str]]:
     """
@@ -275,23 +574,21 @@ def _find_best_match(
     Rule:
       - Only consider rows whose token set fully contains all tokens from `name`.
       - Among those candidates, pick the one with highest similarity.
-      - If no such candidate exists, return None (so we can fallback to OSM).
+      - If there is exactly 1 strict candidate, accept it regardless of min_score.
     """
-    norm_name = _normalize_text(name)
-    name_tokens = set(_tokenize(name))
+    norm_name = normalize_text(name)
+    name_tokens = set(tokenize(name))
 
     best_row: Optional[Dict[str, str]] = None
     best_score = 0.0
-
-    # Strict candidates – row must contain ALL tokens in the query
     strict_candidates: List[Dict[str, str]] = []
 
     for row in rows:
-        row_name = _get_row_name(row)
+        row_name = get_row_name(row)
         if not row_name:
             continue
 
-        row_tokens = set(_tokenize(row_name))
+        row_tokens = set(tokenize(row_name))
         if not row_tokens:
             continue
 
@@ -299,83 +596,231 @@ def _find_best_match(
         if name_tokens and name_tokens.issubset(row_tokens):
             strict_candidates.append(row)
 
-    # If we have no strict candidates -> treat as "not found in CSV"
     if not strict_candidates:
         return None
 
     # Among strict candidates, choose best fuzzy score
     for row in strict_candidates:
-        row_name = _get_row_name(row)
+        row_name = get_row_name(row)
         score = SequenceMatcher(
-            None, norm_name, _normalize_text(row_name)
+            None, norm_name, normalize_text(row_name)
         ).ratio()
         if score > best_score:
             best_score = score
             best_row = row
 
-    if best_row and best_score >= min_score:
-        return best_row
+    if best_row:
+        # If only one candidate, trust it even if score is low
+        if len(strict_candidates) == 1:
+            return best_row
+        # Otherwise require min_score
+        if best_score >= min_score:
+            return best_row
+
     return None
+
+# ============================================================
+# REGION HINT EXTRACTION
+# ============================================================
+
+def extract_region_hint_province(answer: str) -> Optional[str]:
+    """
+    Try to extract a province/city name from the chatbot answer by scanning:
+      - 63 Vietnamese provinces
+      - A curated list of major tourism cities (Đà Lạt, Nha Trang, Hội An, ...)
+      - Common synonyms (Sài Gòn -> TP.HCM, ...)
+    """
+    if not answer:
+        return None
+
+    text_norm = normalize_for_match(answer)
+
+    # 1) Check official province names
+    for prov in VIETNAM_PROVINCES:
+        prov_norm = normalize_for_match(prov)
+        if prov_norm and prov_norm in text_norm:
+            return prov
+
+    # 2) Check synonyms for provinces (Sài Gòn → TP.HCM, ...)
+    for alias, canonical in PROVINCE_SYNONYMS.items():
+        alias_norm = normalize_for_match(alias)
+        if alias_norm and alias_norm in text_norm:
+            return canonical
+
+    # 3) Check famous tourism cities (Đà Lạt, Nha Trang, Hội An, ...)
+    for city in VIETNAM_TOURISM_CITIES:
+        city_norm = normalize_for_match(city)
+        if city_norm and city_norm in text_norm:
+            return city
+
+    return None
+
+# ============================================================
+# ADDRESS HEURISTIC + SINGLE-NAME RESOLVER
+# ============================================================
+
+def looks_like_address(query: str) -> bool:
+    """
+    Heuristic check to decide if the user input looks more like a full address
+    than a landmark name.
+
+    We treat it as an address if:
+      - It contains digits (house number), OR
+      - It contains typical street/ward/city tokens.
+    """
+    if not query:
+        return False
+
+    q = query.lower()
+
+    # If there is at least one digit, it is very likely a street address
+    if any(ch.isdigit() for ch in q):
+        return True
+
+    street_keywords = [
+        "đường", "duong",
+        "phố", "pho",
+        "street", "st.",
+        "phường", "phuong",
+        "quận", "quan",
+        "thành phố", "tp.", "tp ",
+        "city", "ward", "district",
+    ]
+
+    return any(kw in q for kw in street_keywords)
+
+
+def resolve_location_by_name(
+    name: str,
+    context_answer: Optional[str] = None,
+) -> Optional[Dict[str, object]]:
+    """
+    Resolve a single location name or address using:
+      1. CSV strict match (for landmark names inside our curated dataset).
+      2. OSM fallback (for both names and raw addresses).
+
+    If the input looks like a full address (e.g. contains house number,
+    street name, ward/district keywords), we skip CSV and go directly to OSM.
+    """
+    if not name:
+        return None
+
+    # Address-like input → skip CSV and resolve directly via OSM
+    if looks_like_address(name):
+        # Try to extract region hint from the whole string or context
+        region_hint = extract_region_hint_province(context_answer or name)
+
+        if region_hint:
+            logger.info(
+                f"[location_extractor][OSM] Address-like input with region hint "
+                f"'{region_hint}' for '{name}'"
+            )
+
+        return search_osm_location(
+            name,
+            context=DEFAULT_OSM_CONTEXT,
+            region_hint=region_hint,
+        )
+
+    # Otherwise treat input as a landmark name and use CSV first
+    rows = load_locations()
+
+    csv_row = find_best_match(name, rows, min_score=0.5)
+    if csv_row:
+        lat, lng = get_lat_lng(csv_row)
+        if lat is not None and lng is not None:
+            return {
+                "name": get_row_name(csv_row),
+                "address": csv_row.get("DiaChi", "") or "",
+                "lat": lat,
+                "lng": lng,
+                "description": csv_row.get("NoiDung") or "",
+                "imageUrl": (
+                    csv_row.get("ImageURL")
+                    if csv_row.get("ImageURL") not in (None, "", "N/A")
+                    else None
+                ),
+                "source": "csv",
+            }
+
+    # CSV failed or missing lat/lng → OSM fallback
+    if context_answer:
+        region_hint = extract_region_hint_province(context_answer)
+    else:
+        region_hint = extract_region_hint_province(name)
+
+    if region_hint:
+        logger.info(
+            f"[location_extractor][OSM] Using region hint '{region_hint}' "
+            f"for direct name '{name}'"
+        )
+
+    return search_osm_location(
+        name,
+        context=DEFAULT_OSM_CONTEXT,
+        region_hint=region_hint,
+    )
 
 # ============================================================
 # MAIN PUBLIC FUNCTION
 # ============================================================
+
+def extract_region_hint_province(answer: str) -> Optional[str]:
+    """
+    Try to extract a province/city name from the chatbot answer by scanning:
+      - 63 Vietnamese provinces
+      - A curated list of major tourism cities (Đà Lạt, Nha Trang, Hội An, ...)
+    """
+    if not answer:
+        return None
+
+    text_norm = normalize_for_match(answer)
+
+    # 1) Check official province names
+    for prov in VIETNAM_PROVINCES:
+        prov_norm = normalize_for_match(prov)
+        if prov_norm and prov_norm in text_norm:
+            return prov
+
+    # 2) Check synonyms for provinces (Sài Gòn → TP.HCM, ...)
+    for alias, canonical in PROVINCE_SYNONYMS.items():
+        alias_norm = normalize_for_match(alias)
+        if alias_norm and alias_norm in text_norm:
+            return canonical
+
+    # 3) Check famous tourism cities (Đà Lạt, Nha Trang, Hội An, ...)
+    for city in VIETNAM_TOURISM_CITIES:
+        city_norm = normalize_for_match(city)
+        if city_norm and city_norm in text_norm:
+            return city  
+
+    return None
 
 def extract_locations_from_answer(answer: str) -> List[Dict[str, object]]:
     """
     Extract all location objects from the chatbot answer.
     Priority:
       1. Match from CSV dataset (preferred because curated)
-      2. Fallback to OpenStreetMap Nominatim
+      2. Fallback to OpenStreetMap Nominatim (region-aware, if possible)
     """
-    rows = _load_locations()
+    # Warm CSV cache (resolve_location_by_name also uses it)
+    _ = load_locations()
 
-    names = _extract_candidate_names(answer)
+    names = extract_candidate_names(answer)
     logger.info(f"[location_extractor] Candidate names: {names}")
 
-    matched = []
+    matched: List[Dict[str, object]] = []
     seen_names = set()
 
     for name in names:
-        # Try CSV first
-        best = _find_best_match(name, rows, min_score=0.8)
-        location_data = None
-
-        if best:
-            resolved_name = _get_row_name(best)
-            if resolved_name not in seen_names:
-                lat, lng = _get_lat_lng(best)
-
-                if lat is not None and lng is not None:
-                    seen_names.add(resolved_name)
-                    location_data = {
-                        "name": resolved_name,
-                        "address": best.get("DiaChi", "") or "",
-                        "lat": lat,
-                        "lng": lng,
-                        "description": best.get("NoiDung") or "",
-                        "imageUrl": (
-                            best.get("ImageURL")
-                            if best.get("ImageURL") not in (None, "", "N/A")
-                            else None
-                        ),
-                        "source": "csv",
-                    }
-                else:
-                    logger.warning(
-                        f"[location_extractor] CSV row matched '{resolved_name}' but missing valid lat/lng"
-                    )
-
-        # CSV failed → use OSM fallback
-        if location_data is None:
-            osm = _search_osm_location(name)
-            if osm:
-                if osm["name"] not in seen_names:
-                    seen_names.add(osm["name"])
-                    location_data = osm
+        # Use the shared resolver for consistency between phases
+        location_data = resolve_location_by_name(name, context_answer=answer)
 
         if location_data:
-            matched.append(location_data)
+            resolved_name = location_data.get("name") or name
+            if resolved_name not in seen_names:
+                seen_names.add(resolved_name)
+                matched.append(location_data)
 
     logger.info(f"[location_extractor] Matched {len(matched)} locations (csv+osm)")
     return matched
