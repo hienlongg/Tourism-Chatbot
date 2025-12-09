@@ -82,7 +82,7 @@ def initialize_chatbot():
         
         # Initialize RAG system
         logger.info("📚 Loading RAG system...")
-        vector_store, llm, embeddings = initialize_rag_system(api_key=api_key)
+        vector_store, llm = initialize_rag_system(api_key=api_key)
         
         # Initialize database and checkpointer for conversation memory
         logger.info("🗄️ Connecting to PostgreSQL for conversation memory...")

@@ -187,14 +187,66 @@ def create_documents(df: pd.DataFrame) -> List[Document]:
 # VECTOR STORE INITIALIZATION
 # ============================================================================
 
-def initialize_embeddings():
+def initialize_embeddings(
+    use_remote: bool = None,
+    remote_api_url: str = None,
+    timeout: int = 30,
+    fallback_to_local: bool = True,
+    verbose: bool = False
+):
     """
-    Initialize HuggingFace embeddings model.
+    Initialize embeddings - remote (HF Spaces) or local.
+    
+    Supports two modes:
+    1. Remote: Uses embedding API on HuggingFace Spaces (requires URL)
+    2. Local: Uses local HuggingFace embeddings (default, no dependencies)
+    
+    Args:
+        use_remote: If True, use remote embeddings. If None, check config.
+        remote_api_url: URL of remote embedding API (required if use_remote=True)
+        timeout: Request timeout in seconds (for remote)
+        fallback_to_local: If True, fallback to local if remote fails
+        verbose: If True, print detailed logs
     
     Returns:
-        HuggingFaceEmbeddings instance
+        Embeddings instance (either RemoteEmbeddingsAdapter or HuggingFaceEmbeddings)
     """
-    print("🤖 Initializing embedding model...")
+    # Use config values if not explicitly provided
+    if use_remote is None:
+        use_remote = getattr(Config, 'USE_REMOTE_EMBEDDINGS', False)
+    
+    if remote_api_url is None:
+        remote_api_url = getattr(Config, 'REMOTE_EMBEDDING_API_URL', None)
+    
+    if fallback_to_local is None:
+        fallback_to_local = getattr(Config, 'EMBEDDING_API_FALLBACK_LOCAL', True)
+    
+    if use_remote and remote_api_url:
+        print("🌐 Initializing REMOTE embeddings (HuggingFace Spaces)...")
+        print(f"   API URL: {remote_api_url}")
+        
+        try:
+            from tourism_chatbot.clients.langchain_embedding_adapter import RemoteEmbeddingsAdapter
+            
+            embeddings = RemoteEmbeddingsAdapter(
+                space_url=remote_api_url,
+                timeout=timeout,
+                fallback_to_local=fallback_to_local,
+                model_name=EMBEDDING_MODEL,
+                verbose=verbose
+            )
+            
+            print("✅ Remote embeddings initialized successfully")
+            return embeddings
+        
+        except Exception as e:
+            print(f"❌ Failed to initialize remote embeddings: {e}")
+            if not fallback_to_local:
+                raise
+            print("⚠️  Falling back to local embeddings...")
+    
+    # Local embeddings (default)
+    print("🤖 Initializing LOCAL embeddings (HuggingFace)...")
     print(f"   Model: {EMBEDDING_MODEL}")
     
     embeddings = HuggingFaceEmbeddings(
@@ -203,6 +255,7 @@ def initialize_embeddings():
         encode_kwargs={'normalize_embeddings': True}  # Normalize for cosine similarity
     )
     
+    print("✅ Local embeddings initialized successfully")
     return embeddings
 
 
@@ -700,8 +753,10 @@ def initialize_rag_system(
     csv_path: str = CSV_PATH,
     chroma_db_path: str = CHROMA_DB_PATH,
     force_recreate: bool = False,
-    api_key: Optional[str] = None
-) -> Tuple[Chroma, ChatGoogleGenerativeAI, HuggingFaceEmbeddings]:
+    api_key: Optional[str] = None,
+    use_remote_embeddings: bool = None,
+    remote_embedding_url: str = None
+) -> Tuple[Chroma, ChatGoogleGenerativeAI]:
     """
     Initialize complete RAG system (one-stop function).
     
@@ -715,16 +770,21 @@ def initialize_rag_system(
         chroma_db_path: Path to ChromaDB storage
         force_recreate: If True, recreate vector store even if exists
         api_key: Google Gemini API key (optional)
+        use_remote_embeddings: If True, use remote embedding API from HF Spaces
+        remote_embedding_url: URL of remote embedding API
     
     Returns:
-        Tuple of (vector_store, llm, embeddings)
+        Tuple of (vector_store, llm)
     """
     print("\n" + "="*60)
     print("🚀 INITIALIZING RAG TOURISM SYSTEM")
     print("="*60 + "\n")
     
-    # Initialize embeddings
-    embeddings = initialize_embeddings()
+    # Initialize embeddings (remote or local)
+    embeddings = initialize_embeddings(
+        use_remote=use_remote_embeddings,
+        remote_api_url=remote_embedding_url
+    )
     
     # Check if vector store exists
     vector_store_exists = os.path.exists(chroma_db_path)
@@ -756,7 +816,7 @@ def initialize_rag_system(
     print("✅ RAG SYSTEM READY!")
     print("="*60 + "\n")
     
-    return vector_store, llm, embeddings
+    return vector_store, llm
 
 
 # ============================================================================
