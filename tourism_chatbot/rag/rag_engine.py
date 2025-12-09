@@ -301,8 +301,144 @@ def initialize_llm(api_key: Optional[str] = None, temperature: Optional[float] =
 
 
 # ============================================================================
-# MAIN RECOMMENDATION FUNCTION
+# RAG PIPELINE FUNCTIONS (Modular Design for LangGraph)
 # ============================================================================
+
+def semantic_search(
+    vector_store: Chroma,
+    user_query: str,
+    top_k: int = TOP_K_RESULTS,
+    verbose: bool = False
+) -> List[Document]:
+    """
+    Step 1: Semantic search to find relevant locations.
+    
+    Args:
+        vector_store: ChromaDB vector store instance
+        user_query: Natural language query
+        top_k: Number of similar locations to retrieve
+        verbose: If True, print logs
+    
+    Returns:
+        List of relevant Document objects
+    """
+    if verbose:
+        print(f"📊 Semantic Search: '{user_query}'")
+        print(f"   Searching for top {top_k} locations...")
+    
+    retrieved_docs = vector_store.similarity_search(user_query, k=top_k)
+    
+    if verbose:
+        print(f"   ✅ Retrieved {len(retrieved_docs)} locations\n")
+    
+    return retrieved_docs
+
+
+def filter_visited_locations(
+    documents: List[Document],
+    user_visited_ids: List[str],
+    allow_revisit: bool = False,
+    verbose: bool = False
+) -> Tuple[List[Document], List[Document], int]:
+    """
+    Step 2: Filter documents based on visit history.
+    
+    Args:
+        documents: List of retrieved documents
+        user_visited_ids: List of loc_ids user has visited
+        allow_revisit: If False, exclude visited places
+        verbose: If True, print logs
+    
+    Returns:
+        Tuple of (new_places, old_places, filtered_count)
+    """
+    if verbose:
+        print("🔀 History Filtering")
+        print(f"   Separating visited vs new places...")
+    
+    new_places = []
+    old_places = []
+    
+    for doc in documents:
+        loc_id = doc.metadata['loc_id']
+        if loc_id in user_visited_ids:
+            old_places.append(doc)
+        else:
+            new_places.append(doc)
+    
+    if verbose:
+        print(f"   New places: {len(new_places)}")
+        print(f"   Visited places: {len(old_places)}\n")
+    
+    if allow_revisit:
+        final_places = documents
+        filtered_count = 0
+        if verbose:
+            print("   ✅ Including all places (revisit allowed)\n")
+    else:
+        final_places = new_places
+        filtered_count = len(old_places)
+        if verbose:
+            print(f"   ✅ Excluding {filtered_count} visited places\n")
+    
+    return new_places, old_places, filtered_count
+
+
+def build_context(
+    documents: List[Document],
+    user_visited_ids: List[str] = None,
+    allow_revisit: bool = False,
+    verbose: bool = False
+) -> str:
+    """
+    Step 3: Build structured context from documents for LLM.
+    
+    Args:
+        documents: List of documents to build context from
+        user_visited_ids: List of visited location IDs (for marking)
+        allow_revisit: Whether to mark visited locations
+        verbose: If True, print logs
+    
+    Returns:
+        Formatted context string for LLM prompt
+    """
+    if verbose:
+        print("📝 Building Context")
+    
+    if not documents:
+        return ""
+    
+    if user_visited_ids is None:
+        user_visited_ids = []
+    
+    context_parts = []
+    for i, doc in enumerate(documents, 1):
+        meta = doc.metadata
+        
+        place_info = f"""
+Địa điểm {i}:
+- Tên: {meta['TenDiaDanh']}
+- Địa chỉ: {meta['DiaChi']}
+"""
+        
+        if meta.get('NoiDung') and meta['NoiDung'].strip():
+            place_info += f"- Mô tả: {meta['NoiDung']}\n"
+        
+        if meta.get('DanhGia') and str(meta['DanhGia']).strip() and str(meta['DanhGia']) != 'N/A':
+            place_info += f"- Đánh giá: {meta['DanhGia']}\n"
+        
+        if allow_revisit and meta['loc_id'] in user_visited_ids:
+            place_info += "- Trạng thái: Đã ghé thăm\n"
+        
+        context_parts.append(place_info)
+    
+    context = "\n".join(context_parts)
+    
+    if verbose:
+        print(f"   ✅ Context built for {len(documents)} places\n")
+    
+    return context
+
 
 def generate_recommendation(
     vector_store: Chroma,
@@ -347,52 +483,16 @@ def generate_recommendation(
         print(f"Allow Revisit: {allow_revisit}")
         print(f"{'='*60}\n")
     
-    # STEP 1: RAG Retrieval - Vector Similarity Search
-    if verbose:
-        print("📊 STEP 1: Vector Similarity Search")
-        print(f"   Searching for top {top_k} similar locations...")
+    # STEP 1: Semantic Search
+    retrieved_docs = semantic_search(vector_store, user_query, top_k, verbose)
     
-    retrieved_docs = vector_store.similarity_search(
-        user_query,
-        k=top_k
+    # STEP 2: History Filtering
+    new_places, old_places, filtered_count = filter_visited_locations(
+        retrieved_docs, user_visited_ids, allow_revisit, verbose
     )
     
-    if verbose:
-        print(f"   ✅ Retrieved {len(retrieved_docs)} locations\n")
-    
-    # STEP 2: History Filtering - Separate new vs visited places
-    if verbose:
-        print("🔀 STEP 2: History Filtering")
-        print(f"   Separating visited vs new places...")
-    
-    new_places = []  # Places user hasn't visited
-    old_places = []  # Places user has visited
-    
-    for doc in retrieved_docs:
-        loc_id = doc.metadata['loc_id']
-        
-        if loc_id in user_visited_ids:
-            old_places.append(doc)
-        else:
-            new_places.append(doc)
-    
-    if verbose:
-        print(f"   New places: {len(new_places)}")
-        print(f"   Visited places: {len(old_places)}\n")
-    
-    # Decide which places to recommend based on allow_revisit
-    if allow_revisit:
-        # Include all places (visited + new)
-        final_places = retrieved_docs
-        filtered_count = 0
-        if verbose:
-            print("   ✅ Including all places (revisit allowed)\n")
-    else:
-        # Only recommend new places
-        final_places = new_places
-        filtered_count = len(old_places)
-        if verbose:
-            print(f"   ✅ Excluding {filtered_count} visited places\n")
+    # Decide which places to use for context
+    final_places = retrieved_docs if allow_revisit else new_places
     
     # Handle case where no places remain after filtering
     if not final_places:
@@ -403,39 +503,11 @@ def generate_recommendation(
             'filtered_count': filtered_count
         }
     
-    # STEP 3: Context Building - Prepare data for LLM
+    # STEP 3: Context Building
     if verbose:
         print("📝 STEP 3: Building Context for LLM")
     
-    # Build structured context from final places
-    context_parts = []
-    for i, doc in enumerate(final_places, 1):
-        meta = doc.metadata
-        
-        place_info = f"""
-Địa điểm {i}:
-- Tên: {meta['TenDiaDanh']}
-- Địa chỉ: {meta['DiaChi']}
-"""
-        
-        # Add description if available
-        if meta.get('NoiDung') and meta['NoiDung'].strip():
-            place_info += f"- Mô tả: {meta['NoiDung']}\n"
-        
-        # Add rating if available
-        if meta.get('DanhGia') and str(meta['DanhGia']).strip() and str(meta['DanhGia']) != 'N/A':
-            place_info += f"- Đánh giá: {meta['DanhGia']}\n"
-        
-        # Mark if visited (when allow_revisit=True)
-        if allow_revisit and meta['loc_id'] in user_visited_ids:
-            place_info += "- Trạng thái: Đã ghé thăm\n"
-        
-        context_parts.append(place_info)
-    
-    context = "\n".join(context_parts)
-    
-    if verbose:
-        print(f"   ✅ Context built for {len(final_places)} places\n")
+    context = build_context(final_places, user_visited_ids, allow_revisit, verbose)
     
     # STEP 4: LLM Generation - Create recommendation text
     if verbose:
@@ -699,6 +771,9 @@ __all__ = [
     'create_vector_store',
     'load_vector_store',
     'initialize_llm',
+    'semantic_search',
+    'filter_visited_locations',
+    'build_context',
     'generate_recommendation',
     'generate_recommendation_stream',
     'initialize_rag_system',
