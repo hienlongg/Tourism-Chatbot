@@ -4,7 +4,6 @@ Provides REST API endpoints for the tourism chatbot functionality.
 """
 
 from flask import Blueprint, request, jsonify, session, Response, stream_with_context
-from backend.middlewares.decorators import login_required
 from tourism_chatbot.agents.tools import set_user_context, retrieve_context
 from tourism_chatbot.memory import UserContextManager
 from tourism_chatbot.rag.rag_engine import slugify
@@ -168,7 +167,6 @@ def health_check():
 
 
 @chat_bp.route("/message", methods=["POST"])
-@login_required
 def send_message():
     """
     Send a message to the chatbot and get a response.
@@ -399,7 +397,6 @@ def send_message():
 
 
 @chat_bp.route("/message/stream", methods=["POST"])
-@login_required
 def send_message_stream():
     """
     Send a message to the chatbot and get a streaming response.
@@ -570,7 +567,6 @@ def send_message_stream():
 
 
 @chat_bp.route("/context", methods=["GET"])
-@login_required
 def get_context():
     """
     Get current user's chat context (visited locations, preferences).
@@ -590,7 +586,6 @@ def get_context():
 
 
 @chat_bp.route("/context/visited", methods=["POST"])
-@login_required
 def add_visited_location():
     """
     Add a visited location to user's context.
@@ -652,7 +647,6 @@ def add_visited_location():
 
 
 @chat_bp.route("/context/visited", methods=["DELETE"])
-@login_required
 def remove_visited_location():
     """
     Remove a visited location from user's context.
@@ -714,7 +708,6 @@ def remove_visited_location():
 
 
 @chat_bp.route("/context/revisit", methods=["PUT"])
-@login_required
 def set_revisit_preference():
     """
     Set allow_revisit preference.
@@ -753,7 +746,6 @@ def set_revisit_preference():
 
 
 @chat_bp.route("/context/clear", methods=["POST"])
-@login_required
 def clear_context():
     """
     Clear user's chat context (reset visited locations and preferences).
