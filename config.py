@@ -86,3 +86,9 @@ class Config:
     RAG_GEMINI_MODEL = os.getenv('RAG_GEMINI_MODEL', 'gemini-2.5-flash-lite')
     RAG_TOP_K_RESULTS = int(os.getenv('RAG_TOP_K_RESULTS', '5'))
     RAG_LLM_TEMPERATURE = float(os.getenv('RAG_LLM_TEMPERATURE', '0.7'))
+    
+    # Remote Embedding API Configuration (HuggingFace Spaces)
+    USE_REMOTE_EMBEDDINGS = os.getenv('USE_REMOTE_EMBEDDINGS', 'False').lower() == 'true'
+    REMOTE_EMBEDDING_API_URL = os.getenv('REMOTE_EMBEDDING_API_URL', None)
+    EMBEDDING_API_TIMEOUT = int(os.getenv('EMBEDDING_API_TIMEOUT', '30'))
+    EMBEDDING_API_FALLBACK_LOCAL = os.getenv('EMBEDDING_API_FALLBACK_LOCAL', 'True').lower() == 'true'
