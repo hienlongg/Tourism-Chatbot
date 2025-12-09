@@ -28,6 +28,9 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_chroma import Chroma
 from langchain_core.prompts import PromptTemplate
 
+# Application imports
+from config import Config
+
 warnings.filterwarnings('ignore')
 
 
@@ -35,14 +38,14 @@ warnings.filterwarnings('ignore')
 # CONFIGURATION
 # ============================================================================
 
-# Paths (relative to project root)
-CSV_PATH = 'data/processed/danh_sach_thong_tin_dia_danh_chi_tiet.csv'
-CHROMA_DB_PATH = 'data/vector_db/chroma_tourism'
-
-# Model configuration
-EMBEDDING_MODEL = 'sentence-transformers/all-MiniLM-L6-v2'
-GEMINI_MODEL = 'gemini-2.5-flash-lite'
-TOP_K_RESULTS = 5
+# Import configuration from config.py
+CSV_PATH = Config.RAG_CSV_PATH
+CHROMA_DB_PATH = Config.RAG_CHROMA_DB_PATH
+EMBEDDING_MODEL = Config.RAG_EMBEDDING_MODEL
+GEMINI_MODEL = Config.RAG_GEMINI_MODEL
+TOP_K_RESULTS = Config.RAG_TOP_K_RESULTS
+LLM_TEMPERATURE = Config.RAG_LLM_TEMPERATURE
+GEMINI_API_KEY = Config.GEMINI_API_KEY
 
 
 # ============================================================================
@@ -264,28 +267,32 @@ def load_vector_store(embeddings, persist_directory: str) -> Chroma:
 # LLM INITIALIZATION
 # ============================================================================
 
-def initialize_llm(api_key: Optional[str] = None, temperature: float = 0.7):
+def initialize_llm(api_key: Optional[str] = None, temperature: Optional[float] = None):
     """
     Initialize Google Gemini LLM.
     
     Purpose: Create LLM instance for generating recommendations
     
     Args:
-        api_key: Google Gemini API key (optional, will use env var if not provided)
-        temperature: LLM temperature for creativity (0.0-1.0)
+        api_key: Google Gemini API key (optional, will use config if not provided)
+        temperature: LLM temperature for creativity (0.0-1.0, optional, will use config if not provided)
     
     Returns:
         ChatGoogleGenerativeAI instance
     """
     print("🤖 Initializing Google Gemini LLM...")
     
-    # Use provided API key or fall back to environment variable
-    if api_key:
-        os.environ['GOOGLE_API_KEY'] = api_key
+    # Use provided API key or fall back to config
+    key_to_use = api_key or GEMINI_API_KEY
+    if key_to_use:
+        os.environ['GOOGLE_API_KEY'] = key_to_use
+    
+    # Use provided temperature or fall back to config
+    temp_to_use = temperature if temperature is not None else LLM_TEMPERATURE
     
     llm = ChatGoogleGenerativeAI(
         model=GEMINI_MODEL,
-        temperature=temperature,
+        temperature=temp_to_use,
         convert_system_message_to_human=True
     )
     

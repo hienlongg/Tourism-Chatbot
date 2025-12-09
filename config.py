@@ -75,3 +75,14 @@ class Config:
     
     # Chatbot Configuration
     CHATBOT_ENABLED = os.getenv('CHATBOT_ENABLED', 'True').lower() == 'true'
+    
+    # RAG System Configuration
+    # Paths (relative to project root)
+    RAG_CSV_PATH = os.getenv('RAG_CSV_PATH', 'data/processed/danh_sach_thong_tin_dia_danh_chi_tiet.csv')
+    RAG_CHROMA_DB_PATH = os.getenv('RAG_CHROMA_DB_PATH', 'data/vector_db/chroma_tourism')
+    
+    # RAG Model Configuration
+    RAG_EMBEDDING_MODEL = os.getenv('RAG_EMBEDDING_MODEL', 'sentence-transformers/all-MiniLM-L6-v2')
+    RAG_GEMINI_MODEL = os.getenv('RAG_GEMINI_MODEL', 'gemini-2.5-flash-lite')
+    RAG_TOP_K_RESULTS = int(os.getenv('RAG_TOP_K_RESULTS', '5'))
+    RAG_LLM_TEMPERATURE = float(os.getenv('RAG_LLM_TEMPERATURE', '0.7'))
