@@ -31,9 +31,16 @@ class Config:
     # Session Configuration
     SESSION_TYPE = "mongodb"
     SESSION_PERMANENT = True
-    SESSION_COOKIE_SAMESITE = "None"
-    SESSION_COOKIE_SECURE = True
+    # SESSION_COOKIE_SAMESITE = "None"
+    # SESSION_COOKIE_SECURE = True
     SESSION_COOKIE_HTTPONLY = True
+    
+    # Chỉ bật Secure nếu không phải Debug (hoặc dựa trên biến môi trường FLASK_ENV)
+    SESSION_COOKIE_SECURE = os.getenv('FLASK_ENV') == 'production'
+    
+    # SameSite='None' yêu cầu Secure=True. 
+    # Nếu chạy local (Secure=False), SameSite nên là 'Lax' hoặc bỏ trống để trình duyệt tự xử lý.
+    SESSION_COOKIE_SAMESITE = "None" if os.getenv('FLASK_ENV') == 'production' else "Lax"
     
     # CORS Configuration
     ALLOWED_ORIGINS = os.getenv('ALLOWED_ORIGINS', 'http://localhost:5173').split(',')
@@ -44,3 +51,5 @@ class Config:
     
     # Chatbot Configuration
     CHATBOT_ENABLED = os.getenv('CHATBOT_ENABLED', 'True').lower() == 'true'
+
+    GOOGLE_CLIENT_ID = os.getenv('GOOGLE_CLIENT_ID')

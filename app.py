@@ -7,7 +7,9 @@ from flask import Flask, jsonify
 from flask_session import Session
 from flask_cors import CORS
 from pymongo import MongoClient
+from mongoengine import connect  # [Import MongoEngine]
 from config import Config
+# Lưu ý: Nếu bạn có travel_log_bp thì thêm vào import, nếu không thì giữ nguyên như dưới
 from backend.routes import auth_bp, chat_bp, upload_bp, init_chatbot
 import logging
 import os
@@ -20,11 +22,29 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 app.config.from_object(Config)
 
-# Initialize MongoDB client for session storage
-mongo_client = MongoClient(Config.MONGODB_URI)
-app.config["SESSION_MONGODB"] = mongo_client
-app.config["SESSION_MONGODB_DB"] = "Authentication"
-app.config["SESSION_MONGODB_COLLECT"] = "Sessions"
+# ---------------------------------------------------------
+# 1. Initialize MongoEngine (Bắt buộc cho UserModel & Auth)
+# ---------------------------------------------------------
+try:
+    connect(host=Config.MONGODB_URI)
+    logger.info("✅ Connected to MongoDB via MongoEngine")
+except Exception as e:
+    logger.error(f"❌ Failed to connect MongoEngine: {e}")
+
+# ---------------------------------------------------------
+# 2. Initialize PyMongo client (Bắt buộc cho Flask-Session)
+# ---------------------------------------------------------
+try:
+    mongo_client = MongoClient(Config.MONGODB_URI)
+    app.config["SESSION_MONGODB"] = mongo_client
+    app.config["SESSION_MONGODB_DB"] = "Authentication"
+    app.config["SESSION_MONGODB_COLLECT"] = "Sessions"
+    
+    # Reuse for app data if needed
+    app.config["APP_MONGO_CLIENT"] = mongo_client
+    app.config["APP_MONGO_DBNAME"] = getattr(Config, "MONGODB_APP_DBNAME", "VoyAIage")
+except Exception as e:
+    logger.error(f"❌ Failed to connect PyMongo: {e}")
 
 # Initialize Flask-Session
 Session(app)
@@ -36,11 +56,13 @@ CORS(app, supports_credentials=True, origins=Config.ALLOWED_ORIGINS)
 app.register_blueprint(auth_bp)
 app.register_blueprint(chat_bp)
 app.register_blueprint(upload_bp)
+# app.register_blueprint(travel_log_bp) # Bỏ comment dòng này nếu bạn có blueprint travel log
 
 # Serve uploaded files as static content
 uploads_dir = os.path.join(os.path.dirname(__file__), 'uploads')
 if not os.path.exists(uploads_dir):
     os.makedirs(uploads_dir)
+
 app.static_folder = None  # Disable default static folder
 @app.route('/uploads/<filename>')
 def serve_upload(filename):
@@ -70,7 +92,7 @@ def initialize_chatbot():
             logger.warning("⚠️ GEMINI_API_KEY not set. Chatbot will not be available.")
             return
         
-        # Import chatbot modules
+        # Import chatbot modules (Lazy import to avoid circular dependency)
         from tourism_chatbot.rag.rag_engine import initialize_rag_system
         from tourism_chatbot.database import get_connection_pool, initialize_checkpointer
         from tourism_chatbot.agents.tourism_agent import create_tourism_agent
