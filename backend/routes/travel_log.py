@@ -7,6 +7,8 @@ from backend.models.travel_log import (
     upsert_location_cache,
     add_visited_location,
     get_user_travel_log,
+    remove_visited_location,
+    update_visited_location_note,
 )
 import logging
 
@@ -66,6 +68,45 @@ def add_visited():
         "location": cached_doc,
         "visitedCount": visited_count,
     }), 200
+
+
+
+@travel_log_bp.route("/visited/<slug>", methods=["DELETE"])
+@login_required
+def remove_visited(slug):
+    """
+    Remove a place from the user's travel log.
+    """
+    user_id = _get_current_user_id()
+    new_count = remove_visited_location(user_id, slug)
+    return jsonify({"success": True, "visitedCount": new_count}), 200
+
+
+@travel_log_bp.route("/visited/<slug>", methods=["PUT"])
+@login_required
+def update_note(slug):
+    """
+    Update the personal note for a visited location.
+    JSON Body: { "note": "..." }
+    """
+    user_id = _get_current_user_id()
+    data = request.get_json() or {}
+    note = data.get("note", "").strip()
+
+    # Note: We allow empty notes (clearing the note)
+    
+    success = update_visited_location_note(user_id, slug, note)
+    
+    if not success:
+         # If slug doesn't exist in user log, we could return 404, 
+         # but update_one returns modified_count=0 if nothing matched.
+         # It's possible the user just hasn't visited it yet or slug is wrong.
+         # For UI consistency we might just return success=False.
+         # But usually if they are editing, it exists.
+         return jsonify({"success": False, "error": "Location not found in travel log"}), 404
+
+    return jsonify({"success": True}), 200
+
 
 
 @travel_log_bp.route("", methods=["GET"])
