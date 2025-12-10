@@ -59,6 +59,9 @@ class Config:
     # Gemini API Configuration
     GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
     
+    # OpenMap API Configuration
+    OPENMAP_API_KEY = os.getenv('OPENMAP_API_KEY')
+    
     # Session Configuration
     SESSION_TYPE = "mongodb"
     SESSION_PERMANENT = True
