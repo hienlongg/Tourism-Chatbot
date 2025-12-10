@@ -248,7 +248,7 @@ def send_message():
     allow_revisit = chat_context.get("allow_revisit", False)
     thread_id = get_thread_id(user_id)
 
-    logger.info(f"📩 Message from user {user_id}: {user_message[:50]}...")
+    logger.info(f"Message from user {user_id}: {user_message[:50]}...")
 
     try:
         # Check for visited location command
@@ -268,7 +268,7 @@ def send_message():
 
             if new_ids:
                 response = (
-                    f"✅ Đã ghi nhận! Bạn đã từng đến: **{', '.join(new_ids)}**\n\n"
+                    f"Đã ghi nhận! Bạn đã từng đến: **{', '.join(new_ids)}**\n\n"
                     f"Tôi sẽ ưu tiên gợi ý những địa điểm mới cho bạn.\n"
                     f"(Hiện tại: {len(visited_ids)} địa điểm đã ghé thăm)"
                 )
@@ -297,13 +297,13 @@ def send_message():
             if revisit_cmd == "allow":
                 chat_context["allow_revisit"] = True
                 response = (
-                    "✅ Đã bật chế độ cho phép gợi ý lại!\n\n"
+                    "Đã bật chế độ cho phép gợi ý lại!\n\n"
                     "Tôi sẽ gợi ý cả những địa điểm bạn đã từng đến."
                 )
             else:  # disallow
                 chat_context["allow_revisit"] = False
                 response = (
-                    "✅ Đã tắt chế độ gợi ý lại!\n\n"
+                    "Đã tắt chế độ gợi ý lại!\n\n"
                     "Tôi sẽ chỉ gợi ý những địa điểm mới mà bạn chưa đến."
                 )
 
@@ -336,13 +336,13 @@ def send_message():
         # Add image context if provided
         if image_url:
             message_content = f"{user_message}\n\n[Image attached: {image_url}]"
-            logger.info(f"📸 Image attached to message: {image_url}")
+            logger.info(f"Image attached to message: {image_url}")
 
         inputs = {"messages": [("user", message_content)]}
 
         config = {"configurable": {"thread_id": thread_id}}
 
-        logger.info(f"🤖 Processing with agent (thread_id: {thread_id})")
+        logger.info(f"Processing with agent (thread_id: {thread_id})")
 
         # Invoke agent (synchronous)
         result = _AGENT_WITH_MEMORY.invoke(inputs, config)
@@ -355,7 +355,7 @@ def send_message():
             else str(last_message)
         )
 
-        logger.info(f"✅ Agent response generated for user {user_id}")
+        logger.info(f"Agent response generated for user {user_id}")
 
         # Extract locations from answer (with lat/lng from CSV)
         try:
@@ -364,7 +364,7 @@ def send_message():
                 f"📍 Extracted {len(matched_locations)} locations from answer"
             )
         except Exception as e:
-            logger.error(f"❌ Error extracting locations: {str(e)}")
+            logger.error(f"Error extracting locations: {str(e)}")
             matched_locations = []
 
         return (
@@ -385,7 +385,7 @@ def send_message():
         )
 
     except Exception as e:
-        logger.error(f"❌ Error processing message: {str(e)}")
+        logger.error(f"Error processing message: {str(e)}")
         return (
             jsonify(
                 {
@@ -526,11 +526,11 @@ def send_message_stream():
                     full_response
                 )
                 logger.info(
-                    f"📍 Extracted {len(matched_locations)} locations from streamed answer"
+                    f"Extracted {len(matched_locations)} locations from streamed answer"
                 )
             except Exception as e:
                 logger.error(
-                    f"❌ Error extracting locations (stream): {str(e)}"
+                    f"Error extracting locations (stream): {str(e)}"
                 )
                 matched_locations = []
 
@@ -551,7 +551,7 @@ def send_message_stream():
             )
 
         except Exception as e:
-            logger.error(f"❌ Streaming error: {str(e)}")
+            logger.error(f"Streaming error: {str(e)}")
             yield (
                 "data: "
                 + json.dumps({"error": str(e)}, ensure_ascii=False)

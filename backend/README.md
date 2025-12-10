@@ -12,8 +12,9 @@ A robust, modular backend API for the VoyAIage tourism consultation platform, bu
 - **Modular Architecture** - Easy to maintain and extend
 - **Tourism Chatbot** - AI-powered travel recommendations with RAG
 - **Location Extraction** - Smart location matching with CSV + OSM fallback
-- **File Upload** - Image upload with validation
+- **File Upload** - Image upload with validation and Cloudinary support
 - **Travel Log** - Track visited locations
+- **Posts/Guides** - User-generated travel guides and tips with likes, views, and filtering
 
 ## 📍 Location Extraction Logic
 
@@ -54,14 +55,16 @@ The server will start at `http://localhost:5000`
 ```
 backend/
 ├── models/                    # Database models
-│   ├── __init__.py           # Models initialization
+│   ├── __init__.py           # Models initialization & DB connections
 │   ├── user.py               # User authentication model
 │   ├── chat.py               # Chat & message models
-│   └── travel_log.py         # Travel log model
+│   ├── post.py               # Post model (guides/tips)
+│   └── travel_log.py         # Travel log functions
 ├── routes/                   # API endpoints
 │   ├── __init__.py          # Routes initialization
 │   ├── authentication.py    # Authentication routes
 │   ├── chat.py              # Chat routes (tourism chatbot)
+│   ├── posts.py             # Posts/Guides CRUD routes
 │   ├── upload.py            # File upload routes
 │   └── travel_log.py        # Travel log routes
 ├── middlewares/              # Request middlewares
@@ -70,8 +73,9 @@ backend/
 └── utils/                   # Utility functions
     ├── __init__.py         # Utils initialization
     ├── validators.py       # Input validation
+    ├── post_validator.py   # Post data validation
     ├── location_extractor.py  # Location extraction logic
-    └── image_resolver.py   # Image URL resolver
+    └── image_resolver.py   # Google Image Search integration
 ```
 
 ## ⚙️ Configuration
@@ -520,6 +524,459 @@ Content-Type: application/json
 
 ---
 
+#### Save/Unsave Location
+```http
+POST /api/travel-log/save
+Content-Type: application/json
+```
+
+**Requires:** Valid session cookie
+
+**Request Body:**
+```json
+{
+  "name": "Hội An",
+  "address": "Quảng Nam, Vietnam",
+  "lat": 15.8801,
+  "lng": 108.3380,
+  "description": "Ancient town with beautiful architecture",
+  "imageUrl": "https://..."
+}
+```
+
+**Success Response (200):**
+```json
+{
+  "success": true,
+  "message": "Location saved successfully",
+  "isSaved": true
+}
+```
+
+**Toggle Response (200):**
+```json
+{
+  "success": true,
+  "message": "Location removed from saved",
+  "isSaved": false
+}
+```
+
+**Error Responses:**
+- `400` - Location name is required
+- `401` - Authentication required
+
+---
+
+#### Get Saved Locations
+```http
+GET /api/travel-log/saved?page=1&limit=10
+```
+
+**Requires:** Valid session cookie
+
+**Query Parameters:**
+- `page` - Page number (default: 1)
+- `limit` - Items per page (default: 10, max: 50)
+
+**Success Response (200):**
+```json
+{
+  "success": true,
+  "locations": [
+    {
+      "userId": "507f1f77bcf86cd799439011",
+      "name": "Hội An",
+      "address": "Quảng Nam, Vietnam",
+      "lat": 15.8801,
+      "lng": 108.3380,
+      "description": "Ancient town...",
+      "imageUrl": "https://...",
+      "isSaved": true,
+      "savedAt": "2024-12-10T05:00:00Z"
+    }
+  ],
+  "pagination": {
+    "page": 1,
+    "limit": 10,
+    "total": 5,
+    "totalPages": 1
+  }
+}
+```
+
+**Error Response:**
+- `401` - Authentication required
+
+---
+
+### Posts Endpoints (Guide/Tips)
+
+#### Create Post
+```http
+POST /api/posts/create
+Content-Type: application/json
+```
+
+**Requires:** Valid session cookie
+
+**Request Body:**
+```json
+{
+  "type": "guide",
+  "title": "Best Coffee Shops in Hanoi",
+  "description": "My favorite spots for coffee lovers",
+  "content": "After living in Hanoi for 2 years, I've discovered...",
+  "location": {
+    "name": "Hanoi, Vietnam",
+    "lat": 21.0285,
+    "lng": 105.8542
+  },
+  "images": ["https://res.cloudinary.com/..."],
+  "tags": ["coffee", "hanoi", "food"],
+  "isPublished": true
+}
+```
+
+**Success Response (201):**
+```json
+{
+  "message": "Post created successfully",
+  "post": {
+    "id": "507f1f77bcf86cd799439011",
+    "type": "guide",
+    "title": "Best Coffee Shops in Hanoi",
+    "description": "My favorite spots for coffee lovers",
+    "content": "After living in Hanoi for 2 years...",
+    "location": {
+      "name": "Hanoi, Vietnam",
+      "lat": 21.0285,
+      "lng": 105.8542
+    },
+    "images": ["https://res.cloudinary.com/..."],
+    "tags": ["coffee", "hanoi", "food"],
+    "author": {
+      "userId": "507f1f77bcf86cd799439011",
+      "email": "user@example.com"
+    },
+    "likeCount": 0,
+    "views": 0,
+    "isPublished": true,
+    "createdAt": "2024-12-10T04:00:00Z",
+    "updatedAt": "2024-12-10T04:00:00Z"
+  }
+}
+```
+
+**Error Responses:**
+- `400` - Validation error (title too short, content missing, etc.)
+- `401` - Authentication required
+
+---
+
+#### List Posts
+```http
+GET /api/posts?type=guide&location=Hanoi&tags=coffee,food&page=1&limit=10&sort=newest
+```
+
+**Query Parameters:**
+- `type` - Filter by type (guide/itinerary)
+- `location` - Filter by location name (partial match)
+- `tags` - Comma-separated tags
+- `author` - Filter by author user ID
+- `page` - Page number (default: 1)
+- `limit` - Items per page (default: 10, max: 50)
+- `sort` - Sort by (newest/popular/trending)
+
+**Success Response (200):**
+```json
+{
+  "posts": [
+    {
+      "id": "507f1f77bcf86cd799439011",
+      "type": "guide",
+      "title": "Best Coffee Shops in Hanoi",
+      "description": "My favorite spots for coffee lovers",
+      "location": {
+        "name": "Hanoi, Vietnam",
+        "lat": 21.0285,
+        "lng": 105.8542
+      },
+      "images": ["https://res.cloudinary.com/..."],
+      "tags": ["coffee", "hanoi", "food"],
+      "author": {
+        "userId": "507f1f77bcf86cd799439011"
+      },
+      "likeCount": 15,
+      "views": 120,
+      "createdAt": "2024-12-10T04:00:00Z"
+    }
+  ],
+  "pagination": {
+    "page": 1,
+    "limit": 10,
+    "total": 25,
+    "totalPages": 3
+  }
+}
+```
+
+---
+
+#### Get Post Detail
+```http
+GET /api/posts/{post_id}
+```
+
+**Success Response (200):**
+```json
+{
+  "post": {
+    "id": "507f1f77bcf86cd799439011",
+    "type": "guide",
+    "title": "Best Coffee Shops in Hanoi",
+    "content": "Full content here...",
+    "location": {
+      "name": "Hanoi, Vietnam",
+      "lat": 21.0285,
+      "lng": 105.8542
+    },
+    "images": ["https://res.cloudinary.com/..."],
+    "tags": ["coffee", "hanoi", "food"],
+    "author": {
+      "userId": "507f1f77bcf86cd799439011",
+      "email": "user@example.com"
+    },
+    "likeCount": 15,
+    "views": 121,
+    "createdAt": "2024-12-10T04:00:00Z",
+    "updatedAt": "2024-12-10T04:00:00Z"
+  }
+}
+```
+
+**Error Responses:**
+- `400` - Invalid post ID
+- `404` - Post not found
+
+---
+
+#### Update Post
+```http
+PUT /api/posts/{post_id}
+Content-Type: application/json
+```
+
+**Requires:** Valid session cookie (must be post author)
+
+**Request Body:** (all fields optional)
+```json
+{
+  "title": "Updated title",
+  "content": "Updated content",
+  "tags": ["coffee", "hanoi"],
+  "isPublished": true
+}
+```
+
+**Success Response (200):**
+```json
+{
+  "message": "Post updated successfully",
+  "post": {
+    "id": "507f1f77bcf86cd799439011",
+    "title": "Updated title",
+    "updatedAt": "2024-12-10T05:00:00Z"
+  }
+}
+```
+
+**Error Responses:**
+- `401` - Authentication required
+- `403` - Not authorized (not the author)
+- `404` - Post not found
+
+---
+
+#### Delete Post
+```http
+DELETE /api/posts/{post_id}
+```
+
+**Requires:** Valid session cookie (must be post author)
+
+**Success Response (200):**
+```json
+{
+  "message": "Post deleted successfully"
+}
+```
+
+**Error Responses:**
+- `401` - Authentication required
+- `403` - Not authorized (not the author)
+- `404` - Post not found
+
+---
+
+#### Like/Unlike Post
+```http
+POST /api/posts/{post_id}/like
+```
+
+**Requires:** Valid session cookie
+
+**Success Response (200):**
+```json
+{
+  "message": "Like toggled successfully",
+  "likeCount": 16,
+  "isLiked": true
+}
+```
+
+**Error Responses:**
+- `401` - Authentication required
+- `404` - Post not found
+
+---
+
+#### Get User's Posts
+```http
+GET /api/posts/user/{user_id}?page=1&limit=10
+```
+
+**Query Parameters:**
+- `page` - Page number (default: 1)
+- `limit` - Items per page (default: 10, max: 50)
+
+**Success Response (200):**
+```json
+{
+  "posts": [...],
+  "pagination": {
+    "page": 1,
+    "limit": 10,
+    "total": 5,
+    "totalPages": 1
+  }
+}
+```
+
+---
+
+#### Upload Post Images (Cloudinary)
+```http
+POST /api/upload/post-image
+Content-Type: multipart/form-data
+```
+
+**Requires:** Valid session cookie
+
+**Request Body:**
+- `images`: Multiple image files (up to 5)
+- Allowed types: png, jpg, jpeg, gif, webp
+- Max size per file: 10MB
+
+**Success Response (200):**
+```json
+{
+  "success": true,
+  "urls": [
+    "https://res.cloudinary.com/your-cloud/image/upload/v1234/tourism-posts/abc123.jpg",
+    "https://res.cloudinary.com/your-cloud/image/upload/v1234/tourism-posts/def456.jpg"
+  ],
+  "message": "2 image(s) uploaded successfully"
+}
+```
+
+**Error Responses:**
+- `400` - No images provided or invalid file type
+- `413` - File too large
+- `500` - Cloudinary not configured
+
+---
+
+#### Save/Unsave Post
+```http
+POST /api/posts/{post_id}/save
+```
+
+**Requires:** Valid session cookie
+
+**Success Response (200):**
+```json
+{
+  "message": "Post saved successfully",
+  "isSaved": true
+}
+```
+
+**Toggle Response (200):**
+```json
+{
+  "message": "Post removed from saved",
+  "isSaved": false
+}
+```
+
+**Error Responses:**
+- `401` - Authentication required
+- `404` - Post not found
+
+---
+
+#### Get Saved Posts
+```http
+GET /api/posts/saved?page=1&limit=10
+```
+
+**Requires:** Valid session cookie
+
+**Query Parameters:**
+- `page` - Page number (default: 1)
+- `limit` - Items per page (default: 10, max: 50)
+
+**Success Response (200):**
+```json
+{
+  "posts": [
+    {
+      "id": "507f1f77bcf86cd799439011",
+      "type": "guide",
+      "title": "Best Coffee Shops in Hanoi",
+      "description": "My favorite spots...",
+      "location": {
+        "name": "Hanoi, Vietnam",
+        "lat": 21.0285,
+        "lng": 105.8542
+      },
+      "images": ["/uploads/..."],
+      "tags": ["coffee", "hanoi"],
+      "author": {
+        "userId": "507f1f77bcf86cd799439011"
+      },
+      "likeCount": 15,
+      "views": 120,
+      "isSaved": true,
+      "savedAt": "2024-12-10T05:00:00Z",
+      "createdAt": "2024-12-10T04:00:00Z"
+    }
+  ],
+  "pagination": {
+    "page": 1,
+    "limit": 10,
+    "total": 5,
+    "totalPages": 1
+  }
+}
+```
+
+**Error Response:**
+- `401` - Authentication required
+
+---
+
 ## 🔒 Security Features
 
 | Feature | Implementation |
@@ -700,6 +1157,57 @@ Multiple origins are comma-separated.
   "user_id": String,
   "created_at": DateTime,
   "updated_at": DateTime
+}
+```
+
+### Posts Collection (MongoDB - PostsDB)
+```javascript
+{
+  "_id": ObjectId,
+  "type": String ("guide" | "itinerary"),
+  "title": String (5-200 chars),
+  "description": String (max 501 chars),
+  "content": String (required),
+  "location": {
+    "name": String,
+    "lat": Number,
+    "lng": Number
+  },
+  "images": [String],  // Array of image URLs
+  "tags": [String],    // Lowercase tags
+  "author": {
+    "user_id": ObjectId,
+    "email": String
+  },
+  "likes": [String],   // Array of user IDs who liked
+  "views": Number,
+  "isPublished": Boolean,
+  "isDeleted": Boolean,
+  "createdAt": DateTime,
+  "updatedAt": DateTime
+}
+```
+
+### Saved Posts Collection (MongoDB - VoyAIage)
+```javascript
+{
+  "userId": String,
+  "postId": String,
+  "savedAt": DateTime
+}
+```
+
+### Saved Locations Collection (MongoDB - VoyAIage)
+```javascript
+{
+  "userId": String,
+  "name": String,
+  "address": String,
+  "lat": Number,
+  "lng": Number,
+  "description": String,
+  "imageUrl": String,
+  "savedAt": DateTime
 }
 ```
 

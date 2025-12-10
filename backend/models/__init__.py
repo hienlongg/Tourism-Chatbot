@@ -6,6 +6,7 @@ Exports all database models and initializes MongoDB connections.
 from mongoengine import connect
 from .user import UserModel
 from .chat import ConversationModel, MessageModel, LastMessageModel
+from .post import PostModel
 from config import Config
 
 # Initialize MongoDB connections
@@ -21,9 +22,16 @@ connect(
     host=Config.MONGODB_URI
 )
 
+connect(
+    db="Posts",
+    alias="PostsDB",
+    host=Config.MONGODB_URI
+)
+
 __all__ = [
     'UserModel',
     'ConversationModel',
     'MessageModel',
-    'LastMessageModel'
+    'LastMessageModel',
+    'PostModel'
 ]

@@ -124,3 +124,178 @@ def get_log():
         "visitedCount": len(log["locations"]),
         "locations": log["locations"],
     }), 200
+
+
+@travel_log_bp.route("/save", methods=["POST"])
+@login_required
+def save_location():
+    """
+    Save or unsave a location (bookmark).
+    
+    Request Body:
+        name: str - Location name
+        address: str - Location address (optional)
+        lat: float - Latitude (optional)
+        lng: float - Longitude (optional)
+        description: str - Description (optional)
+        imageUrl: str - Image URL (optional)
+        
+    Returns:
+        200: Save toggled successfully
+    """
+    try:
+        from flask import current_app
+        
+        data = request.get_json() or {}
+        location_name = str(data.get("name", "")).strip()
+        
+        if not location_name:
+            return jsonify({"success": False, "error": "Location name is required"}), 400
+        
+        user_id = _get_current_user_id()
+        
+        # Get MongoDB database
+        db = current_app.config["APP_MONGO_CLIENT"][current_app.config["APP_MONGO_DBNAME"]]
+        
+        # Check if location is already saved
+        saved_location = db.saved_locations.find_one({
+            "userId": user_id,
+            "name": location_name
+        })
+        
+        if saved_location:
+            # Unsave - remove from saved_locations
+            db.saved_locations.delete_one({
+                "userId": user_id,
+                "name": location_name
+            })
+            is_saved = False
+            message = "Location removed from saved"
+        else:
+            # Save - add to saved_locations
+            from datetime import datetime, timezone as tz
+            
+            location_data = {
+                "userId": user_id,
+                "name": location_name,
+                "address": data.get("address", ""),
+                "lat": data.get("lat"),
+                "lng": data.get("lng"),
+                "description": data.get("description", ""),
+                "imageUrl": data.get("imageUrl", ""),
+                "savedAt": datetime.now(tz.utc)
+            }
+            
+            db.saved_locations.insert_one(location_data)
+            is_saved = True
+            message = "Location saved successfully"
+        
+        logger.info(f"Location '{location_name}' {'saved' if is_saved else 'unsaved'} by user {user_id}")
+        
+        return jsonify({
+            "success": True,
+            "message": message,
+            "isSaved": is_saved
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Error toggling save location: {str(e)}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@travel_log_bp.route("/saved-status", methods=["POST"])
+@login_required
+def check_location_saved_status():
+    """
+    Check if a location is saved by current user.
+    
+    Request Body:
+        name: str - Location name
+        
+    Returns:
+        200: Saved status
+    """
+    try:
+        from flask import current_app
+        
+        data = request.get_json() or {}
+        location_name = str(data.get("name", "")).strip()
+        
+        if not location_name:
+            return jsonify({"success": False, "error": "Location name is required"}), 400
+        
+        user_id = _get_current_user_id()
+        
+        # Get MongoDB database
+        db = current_app.config["APP_MONGO_CLIENT"][current_app.config["APP_MONGO_DBNAME"]]
+        
+        # Check if location is saved
+        saved_location = db.saved_locations.find_one({
+            "userId": user_id,
+            "name": location_name
+        })
+        
+        return jsonify({
+            "success": True,
+            "isSaved": saved_location is not None
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Error checking location saved status: {str(e)}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@travel_log_bp.route("/saved", methods=["GET"])
+@login_required
+def get_saved_locations():
+    """
+    Get user's saved locations.
+    
+    Query Parameters:
+        page: int - Page number (default: 1)
+        limit: int - Items per page (default: 10, max: 50)
+        
+    Returns:
+        200: List of saved locations with pagination
+    """
+    try:
+        from flask import current_app
+        
+        # Get query parameters
+        page = int(request.args.get('page', 1))
+        limit = min(int(request.args.get('limit', 10)), 50)
+        
+        # Get MongoDB database
+        db = current_app.config["APP_MONGO_CLIENT"][current_app.config["APP_MONGO_DBNAME"]]
+        user_id = _get_current_user_id()
+        
+        # Get saved locations with pagination
+        skip = (page - 1) * limit
+        saved_locations = list(db.saved_locations.find(
+            {"userId": user_id},
+            {"_id": 0}  # Exclude MongoDB _id
+        ).sort("savedAt", -1).skip(skip).limit(limit))
+        
+        total = db.saved_locations.count_documents({"userId": user_id})
+        
+        # Add isSaved flag to all locations
+        for loc in saved_locations:
+            loc["isSaved"] = True
+            # Convert datetime to ISO string
+            if "savedAt" in loc and loc["savedAt"]:
+                loc["savedAt"] = loc["savedAt"].isoformat()
+        
+        return jsonify({
+            "success": True,
+            "locations": saved_locations,
+            "pagination": {
+                "page": page,
+                "limit": limit,
+                "total": total,
+                "totalPages": (total + limit - 1) // limit
+            }
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Error getting saved locations: {str(e)}")
+        return jsonify({"success": False, "error": str(e)}), 500

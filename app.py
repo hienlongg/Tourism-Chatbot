@@ -8,7 +8,7 @@ from flask_session import Session
 from flask_cors import CORS
 from pymongo import MongoClient
 from config import Config
-from backend.routes import auth_bp, chat_bp, upload_bp, init_chatbot, travel_log_bp
+from backend.routes import auth_bp, chat_bp, upload_bp, init_chatbot, travel_log_bp, posts_bp
 import logging
 import os
 
@@ -41,6 +41,7 @@ app.register_blueprint(auth_bp)
 app.register_blueprint(chat_bp)
 app.register_blueprint(upload_bp)
 app.register_blueprint(travel_log_bp)
+app.register_blueprint(posts_bp)
 
 # Serve uploaded files as static content
 uploads_dir = os.path.join(os.path.dirname(__file__), 'uploads')

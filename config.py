@@ -62,9 +62,21 @@ class Config:
     # Session Configuration
     SESSION_TYPE = "mongodb"
     SESSION_PERMANENT = True
-    SESSION_COOKIE_SAMESITE = "None"
-    SESSION_COOKIE_SECURE = True
+    
+    # Cookie settings - different for dev vs production
+    # In production (HTTPS), use SameSite=None and Secure=True
+    # In development (HTTP), use SameSite=Lax and Secure=False
+    IS_PRODUCTION = os.getenv('FLASK_ENV') == 'production'
+    
+    if IS_PRODUCTION:
+        SESSION_COOKIE_SAMESITE = "None"
+        SESSION_COOKIE_SECURE = True
+    else:
+        SESSION_COOKIE_SAMESITE = "Lax"
+        SESSION_COOKIE_SECURE = False
+    
     SESSION_COOKIE_HTTPONLY = True
+    PERMANENT_SESSION_LIFETIME = 86400 * 7  # 7 days in seconds
     
     # CORS Configuration
     ALLOWED_ORIGINS = os.getenv('ALLOWED_ORIGINS', 'http://localhost:5173').split(',')
