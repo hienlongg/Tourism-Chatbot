@@ -10,6 +10,7 @@ from functools import lru_cache
 from difflib import SequenceMatcher
 from typing import List, Dict, Optional, Any
 import logging
+from config import Config
 import requests
 
 logger = logging.getLogger(__name__)
@@ -147,6 +148,16 @@ def load_locations() -> List[Dict[str, str]]:
     return rows
 
 # ============================================================
+# OPENMAP.VN API (Primary Geocoding Service)
+# ============================================================
+
+OPENMAP_SEARCH_URL = "https://mapapis.openmap.vn/v1/geocode/forward"  # Forward geocoding with /v1 prefix
+OPENMAP_API_KEY = Config.OPENMAP_API_KEY
+
+# Once an error occurs, disable all OpenMap calls for the entire process lifetime
+OPENMAP_DISABLED = False
+
+# ============================================================
 # OPENSTREETMAP FALLBACK (Nominatim)
 # ============================================================
 
@@ -156,96 +167,224 @@ DEFAULT_OSM_CONTEXT = "Việt Nam"
 OSM_USER_AGENT = "voyaiage-tourism-chatbot/1.0 (contact: nchin3107@gmail.com)"
 OSM_EMAIL = "nchin3107@gmail.com"
 
-# OpenMap.vn Configuration
-OPENMAP_BASE_URL = "https://mapapis.openmap.vn/v1"
-OPENMAP_API_KEY = os.getenv("OPENMAP_API_KEY")
-
 # Once a 403 occurs, disable all OSM calls for the entire process lifetime
 OSM_DISABLED = False
 
-
-def query_openmap_vn(query: str) -> List[Dict[str, Any]]:
+@lru_cache(maxsize=256)
+def search_openmap_location(
+    name: str,
+    region_hint: Optional[str] = None,
+) -> Optional[Dict[str, object]]:
     """
-    Query OpenMap.vn Geocoding API.
-    Returns a list of results in a standardized format (similar to Nominatim).
-    """
-    if not OPENMAP_API_KEY:
-        return []
+    Perform a search on the OpenMap.vn API to resolve a location name.
+    This function uses multiple fallback strategies similar to OSM search.
 
-    url = f"{OPENMAP_BASE_URL}/geocode/search"
-    params = {
-        "text": query,
-        "apikey": OPENMAP_API_KEY,
-    }
-    
-    try:
-        resp = requests.get(url, params=params, timeout=8)
-        resp.raise_for_status()
-        data = resp.json()
-        
-        # Parse GeoJSON response from OpenMap.vn
-        results = []
-        features = data.get("features", [])
-        
-        for feat in features:
-            props = feat.get("properties", {})
-            geom = feat.get("geometry", {})
-            coords = geom.get("coordinates", [])
+    Resolution strategy:
+      1. Query the raw name directly.
+      2. Remove common prefixes (e.g. "Khu du lịch", "Chùa", "Đền", etc.) and retry.
+      3. Generate split variants (e.g. "Tam Cốc - Bích Động" → "Tam Cốc").
+
+    Region-aware filtering:
+      If `region_hint` is provided (e.g., "Đà Lạt, Lâm Đồng"), the function:
+        - Filters results to match the region hint in the address.
+        - This prevents mismatches such as:
+              "Vườn Hoa Thành Phố" in Đà Lạt incorrectly resolving to Tây Ninh.
+
+    Returns:
+        A dictionary with resolved location data:
+            {
+                "name": <string>,
+                "address": <string>,
+                "lat": <float>,
+                "lng": <float>,
+                "description": None,
+                "imageUrl": None,
+                "source": "openmap"
+            }
+        Or None if no valid match is found.
+    """
+
+    global OPENMAP_DISABLED
+    if OPENMAP_DISABLED or not OPENMAP_API_KEY:
+        return None
+
+    # -----------------------------
+    # Helper: normalize a string by
+    # removing accents + lowercasing
+    # -----------------------------
+    def _norm(text: str) -> str:
+        if not text:
+            return ""
+        text = unicodedata.normalize("NFD", text)
+        text = "".join(c for c in text if unicodedata.category(c) != "Mn")
+        return text.lower().strip()
+
+    # ----------------------------------------------------------------------
+    # Normalize the region hint into searchable components
+    # Example: "Đà Lạt, Lâm Đồng" → ["da lat", "lam dong"]
+    # ----------------------------------------------------------------------
+    region_parts_norm: List[str] = []
+    if region_hint:
+        raw_parts = re.split(r"[,/|-]", region_hint)
+        for part in raw_parts:
+            p = part.strip()
+            if len(p) < 2:
+                continue
+            pn = _norm(p)
+            if pn in ("viet nam",):
+                continue
+            region_parts_norm.append(pn)
+
+    # -----------------------------------------
+    # Generate all fallback name variants
+    # -----------------------------------------
+    queries: List[str] = []
+    queries.append(name)  # raw name
+
+    # Remove known prefixes
+    prefixes = [
+        "khu du lich","quan the","danh thang","di tich","vuon quoc gia",
+        "khu bao ton","trung tam","quang truong","pho co","nha tho",
+        "chua","den","lang","ban","dong","hang","vinh","cong vien"
+    ]
+
+    norm_name = _norm(name)
+    for prefix in prefixes:
+        if norm_name.startswith(prefix + " "):
+            cleaned = name[len(prefix) + 1:].strip()
+            queries.append(cleaned)
+            break
+
+    # Split variants: "A - B" → "A", "A, B" → "A"
+    if " - " in name:
+        queries.append(name.split(" - ")[0].strip())
+    if "-" in name:
+        queries.append(name.split("-")[0].strip())
+    if "," in name:
+        queries.append(name.split(",")[0].strip())
+
+    # Ensure uniqueness
+    queries = list(dict.fromkeys(queries))
+
+    # ----------------------------------------------------------------------
+    # Try each variant until a region-valid match is found
+    # ----------------------------------------------------------------------
+    for q in queries:
+        if len(q) < 3:
+            continue
+
+        # Build query with region hint if available
+        query_text = f"{q}, {region_hint}, Việt Nam" if region_hint else f"{q}, Việt Nam"
+
+        params = {
+            "text": query_text,  # Forward geocoding uses 'text' parameter
+            "apikey": OPENMAP_API_KEY,
+            "size": 5,  # Limit results
+        }
+
+        try:
+            resp = requests.get(OPENMAP_SEARCH_URL, params=params, timeout=8)
+
+            # If OpenMap returns error, disable it
+            if resp.status_code == 403 or resp.status_code == 401:
+                logger.warning(
+                    f"[location_extractor][OpenMap] {resp.status_code} for '{query_text}'. Disabling OpenMap."
+                )
+                OPENMAP_DISABLED = True
+                return None
+
+            if resp.status_code != 200:
+                logger.warning(f"[location_extractor][OpenMap] Non-200 status: {resp.status_code} for '{query_text}'")
+                continue
+
+            data = resp.json()
             
-            if len(coords) >= 2:
-                lng, lat = coords[0], coords[1]
+            # Handle different response formats
+            results = []
+            
+            # Format 1: Direct array of results
+            if isinstance(data, list):
+                results = data
+            # Format 2: Object with 'predictions' key (Google format)
+            elif isinstance(data, dict) and 'predictions' in data:
+                results = data['predictions']
+            # Format 3: GeoJSON FeatureCollection
+            elif isinstance(data, dict) and data.get('type') == 'FeatureCollection':
+                features = data.get('features', [])
+                # Convert GeoJSON to standard format
+                for feat in features:
+                    props = feat.get('properties', {})
+                    geom = feat.get('geometry', {})
+                    coords = geom.get('coordinates', [])
+                    if len(coords) >= 2:
+                        results.append({
+                            'lat': str(coords[1]),  # GeoJSON is [lng, lat]
+                            'lon': str(coords[0]),
+                            'display_name': props.get('label') or props.get('name', ''),
+                            'address': props
+                        })
+            else:
+                logger.warning(f"[location_extractor][OpenMap] Unknown response format for '{q}'")
+                continue
+            
+            if not results:
+                continue
+
+            # ----------------------------------------------------------------------
+            # Region-aware filtering:
+            # Pick the first item whose address contains ALL region components
+            # ----------------------------------------------------------------------
+            chosen_item = None
+
+            for item in results:
+                # Try different field names for coordinates
+                lat = parse_float(item.get("lat") or item.get("latitude") or item.get("y"))
+                lng = parse_float(item.get("lon") or item.get("lng") or item.get("longitude") or item.get("x"))
                 
-                # Normalize to Nominatim structure
-                results.append({
-                    "lat": str(lat),
-                    "lon": str(lng),
-                    "display_name": props.get("label") or props.get("name") or props.get("address") or query,
-                    "address": {
-                        "amenity": props.get("name"),
-                        "city": props.get("region"),
-                        "country": "Việt Nam"
-                    }, 
-                    "raw_source": "openmap_vn"
-                })
-        
-        return results
+                if lat is None or lng is None:
+                    continue
 
-    except Exception as e:
-        logger.error(f"[location_extractor][OpenMap] Error: {e}")
-        return []
+                # For Google predictions format, skip region filtering since it lacks detailed address
+                if region_parts_norm and "display_name" in item:
+                    display = item.get("display_name", "") or item.get("description", "") or item.get("name", "") or ""
+                    addr = item.get("address", {}) or {}
 
+                    # Combine all address fields into a single text blob
+                    addr_text = " ".join([display] + [str(v) for v in addr.values() if v])
+                    addr_norm = _norm(addr_text)
 
-def query_nominatim(query: str) -> List[Dict[str, Any]]:
-    """
-    Query OpenStreetMap Nominatim API.
-    """
-    global OSM_DISABLED
-    if OSM_DISABLED:
-        return []
-        
-    params = {
-        "q": query,
-        "format": "jsonv2",
-        "limit": 5,
-        "addressdetails": 1,
-        "email": OSM_EMAIL,
-    }
-    headers = {"User-Agent": OSM_USER_AGENT}
-    
-    try:
-        resp = requests.get(OSM_SEARCH_URL, params=params, headers=headers, timeout=8)
-        
-        if resp.status_code == 403:
-            logger.error("[location_extractor][OSM] 403 Forbidden. Disabling OSM.")
-            OSM_DISABLED = True
-            return []
-            
-        resp.raise_for_status()
-        return resp.json()
-        
-    except Exception as e:
-        logger.warning(f"[location_extractor][OSM] Error on '{query}': {e}")
-        return []
+                    # Every part of region_hint must appear in the address
+                    if not all(rp in addr_norm for rp in region_parts_norm):
+                        continue  # wrong province/city → skip
+
+                chosen_item = item
+                break  # valid match found
+
+            if not chosen_item:
+                # No item satisfied the region filter — try next fallback query
+                continue
+
+            lat = parse_float(chosen_item.get("lat") or chosen_item.get("latitude") or chosen_item.get("y"))
+            lng = parse_float(chosen_item.get("lon") or chosen_item.get("lng") or chosen_item.get("longitude") or chosen_item.get("x"))
+            address = chosen_item.get("display_name", "") or chosen_item.get("description", "") or chosen_item.get("name", "") or ""
+
+            return {
+                "name": q,
+                "address": address,
+                "lat": lat,
+                "lng": lng,
+                "description": None,
+                "imageUrl": None,
+                "source": "openmap"
+            }
+
+        except Exception as e:
+            logger.warning(f"[location_extractor][OpenMap] Error on '{q}': {e}")
+            continue
+
+    # No valid result found
+    return None
+
 
 
 @lru_cache(maxsize=256)
@@ -370,71 +509,81 @@ def search_osm_location(
 
         query_text = f"{q}, {query_context}" if query_context else q
 
-        # Provider Strategy: OpenMap (Priority) -> Nominatim (Fallback)
-        data = []
-        source_label = ""
+        params = {
+            "q": query_text,
+            "format": "jsonv2",
+            "limit": 5,
+            "addressdetails": 1,
+            "email": OSM_EMAIL,
+        }
 
-        if OPENMAP_API_KEY:
-            data = query_openmap_vn(query_text)
-            source_label = "openmap_vn"
+        try:
+            resp = requests.get(OSM_SEARCH_URL, params=params, headers=headers, timeout=8)
 
-        # If OpenMap found nothing (or no key), try Nominatim
-        if not data:
-            data = query_nominatim(query_text)
-            source_label = "osm_fallback"
+            # If Nominatim blocks us (403), disable OSM entirely
+            if resp.status_code == 403:
+                logger.warning(
+                    f"[location_extractor][OSM] 403 Forbidden for '{query_text}'. Disabling OSM."
+                )
+                OSM_DISABLED = True
+                return None
 
-        if not data:
-            continue
-            
-        # ----------------------------------------------------------------------
-        # Region-aware filtering:
-        # Among all returned items, pick the first one whose address contains
-        # ALL region components (if region_hint is provided).
-        # ----------------------------------------------------------------------
-        chosen_item = None
-
-        for item in data:
-            lat = parse_float(item.get("lat"))
-            lng = parse_float(item.get("lon"))
-            if lat is None or lng is None:
+            if resp.status_code != 200:
                 continue
 
-            if region_parts_norm:
-                addr = item.get("address", {}) or {}
-                display = item.get("display_name", "") or ""
+            data = resp.json()
+            if not data:
+                continue
+            
+            # ----------------------------------------------------------------------
+            # Region-aware filtering:
+            # Among all returned items, pick the first one whose address contains
+            # ALL region components (if region_hint is provided).
+            # ----------------------------------------------------------------------
+            chosen_item = None
 
-                # Combine all address fields into a single text blob
-                addr_text = " ".join([display] + [str(v) for v in addr.values() if v])
-                addr_norm = _norm(addr_text)
+            for item in data:
+                lat = parse_float(item.get("lat"))
+                lng = parse_float(item.get("lon"))
+                if lat is None or lng is None:
+                    continue
 
-                # Every part of region_hint must appear in the address
-                if not all(rp in addr_norm for rp in region_parts_norm):
-                    continue  # wrong province/city → skip
+                if region_parts_norm:
+                    addr = item.get("address", {}) or {}
+                    display = item.get("display_name", "") or ""
 
-            chosen_item = item
-            break  # valid match found
+                    # Combine all address fields into a single text blob
+                    addr_text = " ".join([display] + [str(v) for v in addr.values() if v])
+                    addr_norm = _norm(addr_text)
 
-        if not chosen_item:
-            # No item satisfied the region filter — try next fallback query
+                    # Every part of region_hint must appear in the address
+                    if not all(rp in addr_norm for rp in region_parts_norm):
+                        continue  # wrong province/city → skip
+
+                chosen_item = item
+                break  # valid match found
+
+            if not chosen_item:
+                # No item satisfied the region filter — try next fallback query
+                continue
+
+            lat = parse_float(chosen_item.get("lat"))
+            lng = parse_float(chosen_item.get("lon"))
+            address = chosen_item.get("display_name", "") or ""
+
+            return {
+                "name": original_name or q,  # Use original name if provided
+                "address": address,
+                "lat": lat,
+                "lng": lng,
+                "description": None,
+                "imageUrl": None,
+                "source": "osm_fallback"
+            }
+
+        except Exception as e:
+            logger.warning(f"[location_extractor][OSM] Error on '{q}': {e}")
             continue
-
-        lat = parse_float(chosen_item.get("lat"))
-        lng = parse_float(chosen_item.get("lon"))
-        address = chosen_item.get("display_name", "") or ""
-
-        logger.info(
-            f"[location_extractor][OSM] Matched fallback '{q}' → '{address}' (lat={lat}, lng={lng})"
-        )
-
-        return {
-            "name": original_name or q,  # Use original name if provided
-            "address": address,
-            "lat": lat,
-            "lng": lng,
-            "description": None,
-            "imageUrl": None,
-            "source": source_label
-        }
 
 
 
@@ -792,30 +941,30 @@ def resolve_location_by_name(
     """
     Resolve a single location name or address using:
       1. CSV strict match (for landmark names inside our curated dataset).
-      2. OSM fallback (for both names and raw addresses).
+      2. OpenMap.vn API (primary geocoding service with API key).
+      3. OpenStreetMap Nominatim fallback (free, rate-limited).
 
     If the input looks like a full address (e.g. contains house number,
-    street name, ward/district keywords), we skip CSV and go directly to OSM.
+    street name, ward/district keywords), we skip CSV and go directly to geocoding APIs.
     """
     if not name:
         return None
 
-    # Address-like input → skip CSV and resolve directly via OSM
+    # Address-like input → skip CSV and resolve directly via geocoding APIs
     if looks_like_address(name):
         # Try to extract region hint from the whole string or context
         region_hint = extract_region_hint_province(context_answer or name)
 
-        if region_hint:
-            logger.info(
-                f"[location_extractor][OSM] Address-like input with region hint "
-                f"'{region_hint}' for '{name}'"
-            )
+        # Try OpenMap first
+        openmap_result = search_openmap_location(name, region_hint=region_hint)
+        if openmap_result:
+            return openmap_result
 
+        # Fallback to OSM
         return search_osm_location(
             name,
             context=DEFAULT_OSM_CONTEXT,
             region_hint=region_hint,
-            original_name=name,  # Preserve original name
         )
 
     # Otherwise treat input as a landmark name and use CSV first
@@ -839,23 +988,22 @@ def resolve_location_by_name(
                 "source": "csv",
             }
 
-    # CSV failed or missing lat/lng → OSM fallback
+    # CSV failed or missing lat/lng → Try OpenMap, then OSM fallback
     if context_answer:
         region_hint = extract_region_hint_province(context_answer)
     else:
         region_hint = extract_region_hint_province(name)
 
-    if region_hint:
-        logger.info(
-            f"[location_extractor][OSM] Using region hint '{region_hint}' "
-            f"for direct name '{name}'"
-        )
+    # Try OpenMap first
+    openmap_result = search_openmap_location(name, region_hint=region_hint)
+    if openmap_result:
+        return openmap_result
 
+    # Final fallback to OSM
     return search_osm_location(
         name,
         context=DEFAULT_OSM_CONTEXT,
         region_hint=region_hint,
-        original_name=name,  # Preserve original candidate name
     )
 
 # ============================================================
@@ -908,7 +1056,6 @@ def extract_locations_from_answer(answer: str) -> List[Dict[str, object]]:
     _ = load_locations()
 
     names = extract_candidate_names(answer)
-    logger.info(f"[location_extractor] Candidate names: {names}")
 
     matched: List[Dict[str, object]] = []
     seen_names = set()
@@ -940,20 +1087,11 @@ def extract_locations_from_answer(answer: str) -> List[Dict[str, object]]:
             "Tháp", "Cung điện", "Phố cổ", "Chợ", "Vịnh", "Hang", "Động"
         ]
         
-        # Debug: Log original candidates
-        logger.info(f"[location_extractor] Checking {len(matched)} locations for filtering:")
-        for loc in matched:
-            orig = loc.get("_original_candidate", "N/A")
-            name = loc.get("name", "N/A")
-            logger.info(f"  - Original: '{orig}' → Resolved: '{name}'")
-        
         # Check if we have locations with landmark keywords in ORIGINAL candidates
         has_landmark_keyword = any(
             any(keyword in loc.get("_original_candidate", "") for keyword in landmark_keywords)
             for loc in matched
         )
-        
-        logger.info(f"[location_extractor] has_landmark_keyword = {has_landmark_keyword}")
         
         if has_landmark_keyword:
             # Filter out locations from generic candidates (check ONLY original candidate)
@@ -974,7 +1112,6 @@ def extract_locations_from_answer(answer: str) -> List[Dict[str, object]]:
                 for pattern in generic_patterns:
                     if pattern.lower() in original_candidate.lower() or original_candidate.lower() in pattern.lower():
                         is_generic = True
-                        logger.info(f"[location_extractor] Filtering out '{original_candidate}' (generic city, no landmark keyword)")
                         break
                 
                 # Keep only if not generic
@@ -983,7 +1120,6 @@ def extract_locations_from_answer(answer: str) -> List[Dict[str, object]]:
             
             if filtered:  # Only use filtered list if it's not empty
                 matched = filtered
-                logger.info(f"[location_extractor] After filtering: {len(matched)} specific locations remain")
 
     # Clean up internal tracking field before returning
     for loc in matched:
