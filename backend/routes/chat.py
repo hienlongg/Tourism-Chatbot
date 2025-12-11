@@ -476,8 +476,16 @@ def send_message_stream():
             message_content = [{"type": "text", "text": user_message}]
 
             if image_url:
+                # Handle both absolute and relative URLs
+                # If URL starts with http:// or https://, use as-is
+                # Otherwise, prepend the frontend base URL
+                if image_url.startswith('http://') or image_url.startswith('https://'):
+                    full_image_url = image_url
+                else:
+                    full_image_url = f"http://localhost:5173{image_url}"
+                
                 message_content.append(
-                    {"type": "image", "url": f"http://localhost:5173{image_url}"}
+                    {"type": "image", "url": full_image_url}
                 )
 
             inputs = {"messages": [("user", message_content)]}
