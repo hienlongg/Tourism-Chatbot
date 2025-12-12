@@ -79,6 +79,7 @@ def initialize_chatbot():
         # Import chatbot modules
         from tourism_chatbot.rag.rag_engine import initialize_rag_system
         from tourism_chatbot.database import get_connection_pool, initialize_checkpointer
+        from tourism_chatbot.database.filtered_checkpointer import FilteredCheckpointer
         from tourism_chatbot.agents.tourism_agent import create_tourism_agent
         
         # Initialize RAG system
@@ -89,8 +90,10 @@ def initialize_chatbot():
         logger.info("🗄️ Connecting to PostgreSQL for conversation memory...")
         try:
             pool = get_connection_pool()
-            checkpointer = initialize_checkpointer(pool)
-            logger.info("✅ PostgreSQL checkpointer initialized")
+            base_checkpointer = initialize_checkpointer(pool)
+            # Wrap checkpointer to filter out image URLs before saving
+            checkpointer = FilteredCheckpointer(base_checkpointer)
+            logger.info("✅ PostgreSQL checkpointer initialized (with image filtering)")
         except Exception as db_error:
             logger.warning(f"⚠️ PostgreSQL not available: {db_error}")
             logger.info("📝 Running without conversation memory persistence")

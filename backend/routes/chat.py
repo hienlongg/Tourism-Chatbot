@@ -147,7 +147,23 @@ def detect_allow_revisit_command(message: str) -> str:
     return "none"
 
 
-# ============================================================================
+def prepare_message_for_checkpointer(message_content):
+    """
+    Remove image URLs from message content before saving to checkpointer.
+    Keep only text content to avoid storing large image URLs in database.
+    
+    Args:
+        message_content: Message content with potential images
+        
+    Returns:
+        Cleaned message content with only text
+    """
+    if isinstance(message_content, list):
+        # Filter to only keep text content
+        return [item for item in message_content if item.get("type") == "text"]
+    return message_content
+
+
 # API ENDPOINTS
 # ============================================================================
 
@@ -328,19 +344,20 @@ def send_message():
         # Process with agent
         set_user_context(visited_ids=visited_ids, allow_revisit=allow_revisit)
 
-        # Prepare message content
+        # Prepare message content - include image for agent processing
+        # The FilteredCheckpointer will strip images before saving to database
         message_content = user_message
 
         # Add image context if provided
         if image_url:
             message_content = f"{user_message}\n\n[Image attached: {image_url}]"
-            logger.info(f"Image attached to message: {image_url}")
+            logger.info(f"📸 Image attached to message: {image_url}")
 
         inputs = {"messages": [("user", message_content)]}
 
         config = {"configurable": {"thread_id": thread_id}}
 
-        logger.info(f"Processing with agent (thread_id: {thread_id})")
+        logger.info(f"🤖 Processing with agent (thread_id: {thread_id})")
 
         # Invoke agent (synchronous)
         result = _AGENT_WITH_MEMORY.invoke(inputs, config)
@@ -472,7 +489,8 @@ def send_message_stream():
                 visited_ids=visited_ids, allow_revisit=allow_revisit
             )
 
-            # Prepare message content with image if provided
+            # Prepare message content with image for agent processing
+            # The FilteredCheckpointer will strip images before saving to database
             message_content = [{"type": "text", "text": user_message}]
 
             if image_url:
