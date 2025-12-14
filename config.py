@@ -79,17 +79,23 @@ class Config:
         SESSION_COOKIE_SECURE = False
     
     SESSION_COOKIE_HTTPONLY = True
+    # SESSION_COOKIE_SAMESITE = "Lax"  
+    # SESSION_COOKIE_SECURE = False
+    # SESSION_COOKIE_HTTPONLY = True
     PERMANENT_SESSION_LIFETIME = 86400 * 7  # 7 days in seconds
     
-    # CORS Configuration
-    ALLOWED_ORIGINS = os.getenv('ALLOWED_ORIGINS', 'http://localhost:5173').split(',')
+   
     
+    # CORS Configuration
+    ALLOWED_ORIGINS = os.getenv('ALLOWED_ORIGINS', 'http://localhost:5173,http://127.0.0.1:5173').split(',')    
     # Server Configuration
     PORT = int(os.getenv('PORT', '5000'))  # Render sets PORT as string, convert to int
     DEBUG = os.getenv('DEBUG', 'False').lower() == 'true'
     
     # Chatbot Configuration
     CHATBOT_ENABLED = os.getenv('CHATBOT_ENABLED', 'True').lower() == 'true'
+
+    GOOGLE_CLIENT_ID = os.getenv('GOOGLE_CLIENT_ID')
     
     # RAG System Configuration
     # Paths (relative to project root)
