@@ -1,0 +1,14 @@
+# Hugging Face Spaces Embedding API Requirements
+# Minimal dependencies for the embedding server
+
+# Web framework (handles HTTP API automatically)
+gradio>=4.0.0
+
+# ML/Embeddings
+sentence-transformers>=2.2.0
+langchain-huggingface>=0.1.0
+torch>=2.0.0
+
+# Utilities
+numpy>=1.20.0
+requests>=2.28.0

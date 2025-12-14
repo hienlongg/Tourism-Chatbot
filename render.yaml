@@ -1,0 +1,39 @@
+services:
+  - type: web
+    name: tourism-chatbot
+    env: python
+    plan: free  # Change to 'starter' for production
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn --bind 0.0.0.0:$PORT --timeout 120 --workers 2 app:app
+    envVars:
+      - key: DATABASE_URL
+        scope: build,runtime
+        sync: false  # You'll set this manually
+      - key: GEMINI_API_KEY
+        scope: build,runtime
+        sync: false
+      - key: MONGODB_URI
+        scope: build,runtime
+        sync: false
+      - key: SECRET_KEY
+        scope: build,runtime
+        sync: false
+      - key: ALLOWED_ORIGINS
+        value: localhost:5173,your-frontend-domain.com
+        scope: build,runtime
+      - key: DEBUG
+        value: false
+        scope: build,runtime
+      - key: CHATBOT_ENABLED
+        value: true
+        scope: build,runtime
+      - key: PORT
+        value: 8080
+        scope: build,runtime
+
+  - type: pserv
+    name: tourism-chatbot-db
+    plan: free
+    dbName: tourism_db
+    user: tourism
+    region: oregon  # Choose your region

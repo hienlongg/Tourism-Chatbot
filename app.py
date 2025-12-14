@@ -4,7 +4,7 @@ from flask_cors import CORS
 from pymongo import MongoClient
 from mongoengine import connect
 from config import Config
-from backend.routes import auth_bp, chat_bp, upload_bp, init_chatbot
+from backend.routes import auth_bp, chat_bp, upload_bp, init_chatbot, travel_log_bp, posts_bp
 import logging
 import os
 
@@ -79,7 +79,8 @@ def after_request_func(response):
 app.register_blueprint(auth_bp)
 app.register_blueprint(chat_bp)
 app.register_blueprint(upload_bp)
-# app.register_blueprint(travel_log_bp) # Travel log đang 404 là đúng vì bạn đang comment dòng này
+app.register_blueprint(travel_log_bp)
+app.register_blueprint(posts_bp)
 
 # Serve uploaded files
 uploads_dir = os.path.join(os.path.dirname(__file__), 'uploads')
@@ -99,18 +100,59 @@ def serve_upload(filename):
 def initialize_chatbot():
     if not Config.CHATBOT_ENABLED: return
     try:
-        # (Giữ nguyên logic chatbot của bạn)...
-        pass 
-    except Exception:
-        pass
+        logger.info("🚀 Initializing tourism chatbot system...")
+        
+        # Check for required environment variables
+        api_key = Config.GEMINI_API_KEY
+        if not api_key:
+            logger.warning("⚠️ GEMINI_API_KEY not set. Chatbot will not be available.")
+            return
+        
+        # Import chatbot modules
+        from tourism_chatbot.rag.rag_engine import initialize_rag_system
+        from tourism_chatbot.database import get_connection_pool, initialize_checkpointer
+        from tourism_chatbot.database.filtered_checkpointer import FilteredCheckpointer
+        from tourism_chatbot.agents.tourism_agent import create_tourism_agent
+        
+        # Initialize RAG system
+        logger.info("📚 Loading RAG system...")
+        vector_store, llm = initialize_rag_system(api_key=api_key)
+        
+        # Initialize database and checkpointer for conversation memory
+        logger.info("🗄️ Connecting to PostgreSQL for conversation memory...")
+        try:
+            pool = get_connection_pool()
+            base_checkpointer = initialize_checkpointer(pool)
+            # Wrap checkpointer to filter out image URLs before saving
+            checkpointer = FilteredCheckpointer(base_checkpointer)
+            logger.info("✅ PostgreSQL checkpointer initialized (with image filtering)")
+        except Exception as db_error:
+            logger.warning(f"⚠️ PostgreSQL not available: {db_error}")
+            logger.info("📝 Running without conversation memory persistence")
+            checkpointer = None
+        
+        # Create agent with memory
+        logger.info("🤖 Creating tourism agent...")
+        agent = create_tourism_agent(checkpointer=checkpointer)
+        
+        # Initialize chat routes with chatbot components
+        init_chatbot(agent, vector_store, llm)
+        
+        logger.info("✅ Tourism chatbot system initialized successfully!")
+        
+    except Exception as e:
+        logger.error(f"❌ Failed to initialize chatbot: {str(e)}")
+        logger.info("💡 The server will run without chatbot functionality")
+
 
 @app.route('/')
 def home():
     return jsonify({"message": "VoyAIage Server is Running"}), 200
 
 if __name__ == "__main__":
+    port = int(os.environ.get('PORT', 8080))
     app.run(
         host="0.0.0.0",
-        port=Config.PORT,
+        port=port,
         debug=Config.DEBUG
     )

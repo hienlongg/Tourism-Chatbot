@@ -106,9 +106,41 @@ def get_user_travel_log(user_id: str) -> Dict[str, Any]:
 
         merged = dict(loc_detail)
         merged["visitedAt"] = visited_at
+        merged["notes"] = item.get("notes", "")
         enriched_locations.append(merged)
 
     return {
         "userId": user_id,
         "locations": enriched_locations,
     }
+
+
+def remove_visited_location(user_id: str, location_slug: str) -> int:
+    """
+    Remove a visited location slug from the user's travel log.
+    Returns the total number of visited locations after the update.
+    """
+    db = _get_db()
+
+    db.user_travel_logs.update_one(
+        {"userId": user_id},
+        {"$pull": {"locations": {"slug": location_slug}}},
+    )
+
+    doc = db.user_travel_logs.find_one({"userId": user_id}, {"locations": 1, "_id": 0})
+    locations = doc.get("locations", []) if doc else []
+    return len(locations)
+
+
+def update_visited_location_note(user_id: str, location_slug: str, note: str) -> bool:
+    """
+    Update the personal note for a visited location.
+    """
+    db = _get_db()
+
+    result = db.user_travel_logs.update_one(
+        {"userId": user_id, "locations.slug": location_slug},
+        {"$set": {"locations.$.notes": note}}
+    )
+
+    return result.modified_count > 0

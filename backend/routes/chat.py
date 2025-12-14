@@ -4,7 +4,6 @@ Provides REST API endpoints for the tourism chatbot functionality.
 """
 
 from flask import Blueprint, request, jsonify, session, Response, stream_with_context
-from backend.middlewares.decorators import login_required
 from tourism_chatbot.agents.tools import set_user_context, retrieve_context
 from tourism_chatbot.memory import UserContextManager
 from tourism_chatbot.rag.rag_engine import slugify
@@ -148,7 +147,23 @@ def detect_allow_revisit_command(message: str) -> str:
     return "none"
 
 
-# ============================================================================
+def prepare_message_for_checkpointer(message_content):
+    """
+    Remove image URLs from message content before saving to checkpointer.
+    Keep only text content to avoid storing large image URLs in database.
+    
+    Args:
+        message_content: Message content with potential images
+        
+    Returns:
+        Cleaned message content with only text
+    """
+    if isinstance(message_content, list):
+        # Filter to only keep text content
+        return [item for item in message_content if item.get("type") == "text"]
+    return message_content
+
+
 # API ENDPOINTS
 # ============================================================================
 
@@ -168,7 +183,6 @@ def health_check():
 
 
 @chat_bp.route("/message", methods=["POST"])
-@login_required
 def send_message():
     """
     Send a message to the chatbot and get a response.
@@ -248,7 +262,7 @@ def send_message():
     allow_revisit = chat_context.get("allow_revisit", False)
     thread_id = get_thread_id(user_id)
 
-    logger.info(f"📩 Message from user {user_id}: {user_message[:50]}...")
+    logger.info(f"Message from user {user_id}: {user_message[:50]}...")
 
     try:
         # Check for visited location command
@@ -268,7 +282,7 @@ def send_message():
 
             if new_ids:
                 response = (
-                    f"✅ Đã ghi nhận! Bạn đã từng đến: **{', '.join(new_ids)}**\n\n"
+                    f"Đã ghi nhận! Bạn đã từng đến: **{', '.join(new_ids)}**\n\n"
                     f"Tôi sẽ ưu tiên gợi ý những địa điểm mới cho bạn.\n"
                     f"(Hiện tại: {len(visited_ids)} địa điểm đã ghé thăm)"
                 )
@@ -297,13 +311,13 @@ def send_message():
             if revisit_cmd == "allow":
                 chat_context["allow_revisit"] = True
                 response = (
-                    "✅ Đã bật chế độ cho phép gợi ý lại!\n\n"
+                    "Đã bật chế độ cho phép gợi ý lại!\n\n"
                     "Tôi sẽ gợi ý cả những địa điểm bạn đã từng đến."
                 )
             else:  # disallow
                 chat_context["allow_revisit"] = False
                 response = (
-                    "✅ Đã tắt chế độ gợi ý lại!\n\n"
+                    "Đã tắt chế độ gợi ý lại!\n\n"
                     "Tôi sẽ chỉ gợi ý những địa điểm mới mà bạn chưa đến."
                 )
 
@@ -330,7 +344,8 @@ def send_message():
         # Process with agent
         set_user_context(visited_ids=visited_ids, allow_revisit=allow_revisit)
 
-        # Prepare message content
+        # Prepare message content - include image for agent processing
+        # The FilteredCheckpointer will strip images before saving to database
         message_content = user_message
 
         # Add image context if provided
@@ -355,7 +370,7 @@ def send_message():
             else str(last_message)
         )
 
-        logger.info(f"✅ Agent response generated for user {user_id}")
+        logger.info(f"Agent response generated for user {user_id}")
 
         # Extract locations from answer (with lat/lng from CSV)
         try:
@@ -364,7 +379,7 @@ def send_message():
                 f"📍 Extracted {len(matched_locations)} locations from answer"
             )
         except Exception as e:
-            logger.error(f"❌ Error extracting locations: {str(e)}")
+            logger.error(f"Error extracting locations: {str(e)}")
             matched_locations = []
 
         return (
@@ -385,7 +400,7 @@ def send_message():
         )
 
     except Exception as e:
-        logger.error(f"❌ Error processing message: {str(e)}")
+        logger.error(f"Error processing message: {str(e)}")
         return (
             jsonify(
                 {
@@ -399,7 +414,6 @@ def send_message():
 
 
 @chat_bp.route("/message/stream", methods=["POST"])
-@login_required
 def send_message_stream():
     """
     Send a message to the chatbot and get a streaming response.
@@ -475,12 +489,21 @@ def send_message_stream():
                 visited_ids=visited_ids, allow_revisit=allow_revisit
             )
 
-            # Prepare message content with image if provided
+            # Prepare message content with image for agent processing
+            # The FilteredCheckpointer will strip images before saving to database
             message_content = [{"type": "text", "text": user_message}]
 
             if image_url:
+                # Handle both absolute and relative URLs
+                # If URL starts with http:// or https://, use as-is
+                # Otherwise, prepend the frontend base URL
+                if image_url.startswith('http://') or image_url.startswith('https://'):
+                    full_image_url = image_url
+                else:
+                    full_image_url = f"http://localhost:5173{image_url}"
+                
                 message_content.append(
-                    {"type": "image", "url": f"http://localhost:5173{image_url}"}
+                    {"type": "image", "url": full_image_url}
                 )
 
             inputs = {"messages": [("user", message_content)]}
@@ -526,11 +549,11 @@ def send_message_stream():
                     full_response
                 )
                 logger.info(
-                    f"📍 Extracted {len(matched_locations)} locations from streamed answer"
+                    f"Extracted {len(matched_locations)} locations from streamed answer"
                 )
             except Exception as e:
                 logger.error(
-                    f"❌ Error extracting locations (stream): {str(e)}"
+                    f"Error extracting locations (stream): {str(e)}"
                 )
                 matched_locations = []
 
@@ -551,7 +574,7 @@ def send_message_stream():
             )
 
         except Exception as e:
-            logger.error(f"❌ Streaming error: {str(e)}")
+            logger.error(f"Streaming error: {str(e)}")
             yield (
                 "data: "
                 + json.dumps({"error": str(e)}, ensure_ascii=False)
@@ -570,7 +593,6 @@ def send_message_stream():
 
 
 @chat_bp.route("/context", methods=["GET"])
-@login_required
 def get_context():
     """
     Get current user's chat context (visited locations, preferences).
@@ -590,7 +612,6 @@ def get_context():
 
 
 @chat_bp.route("/context/visited", methods=["POST"])
-@login_required
 def add_visited_location():
     """
     Add a visited location to user's context.
@@ -652,7 +673,6 @@ def add_visited_location():
 
 
 @chat_bp.route("/context/visited", methods=["DELETE"])
-@login_required
 def remove_visited_location():
     """
     Remove a visited location from user's context.
@@ -714,7 +734,6 @@ def remove_visited_location():
 
 
 @chat_bp.route("/context/revisit", methods=["PUT"])
-@login_required
 def set_revisit_preference():
     """
     Set allow_revisit preference.
@@ -753,7 +772,6 @@ def set_revisit_preference():
 
 
 @chat_bp.route("/context/clear", methods=["POST"])
-@login_required
 def clear_context():
     """
     Clear user's chat context (reset visited locations and preferences).
