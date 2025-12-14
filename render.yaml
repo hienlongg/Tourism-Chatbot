@@ -4,7 +4,7 @@ services:
     env: python
     plan: free  # Change to 'starter' for production
     buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn app:app
+    startCommand: gunicorn --bind 0.0.0.0:$PORT --timeout 120 --workers 2 app:app
     envVars:
       - key: DATABASE_URL
         scope: build,runtime
@@ -28,7 +28,7 @@ services:
         value: true
         scope: build,runtime
       - key: PORT
-        value: 10000
+        value: 8080
         scope: build,runtime
 
   - type: pserv
