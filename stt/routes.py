@@ -5,18 +5,16 @@ import tempfile
 
 speech_bp = Blueprint("speech_to_text", __name__)
 
-# Init AssemblyAI
 aai.settings.api_key = os.getenv("ASSEMBLYAI_API_KEY")
 
 
 @speech_bp.route("/api/speech-to-text", methods=["POST"])
 def speech_to_text():
     if "audio" not in request.files:
-        return jsonify({"error": "No audio file provided"}), 400
+        return jsonify({"success": False, "error": {"message": "No audio file"}}), 400
 
     audio_file = request.files["audio"]
 
-    # Windows-safe temp file
     fd, tmp_path = tempfile.mkstemp(suffix=".webm")
     os.close(fd)
 
@@ -27,12 +25,15 @@ def speech_to_text():
         transcript = transcriber.transcribe(tmp_path)
 
         if transcript.status == aai.TranscriptStatus.error:
-            return jsonify({"error": transcript.error}), 500
+            return jsonify({
+                "success": False,
+                "error": {"message": transcript.error}
+            }), 500
 
         return jsonify({
             "success": True,
             "data": {
-                "text": transcript.text or ""
+                "text": transcript.text
             }
         })
 
@@ -43,7 +44,7 @@ def speech_to_text():
                 "code": "STT_INTERNAL_ERROR",
                 "message": str(e)
             }
-    }), 500
+        }), 500
 
     finally:
         if os.path.exists(tmp_path):
