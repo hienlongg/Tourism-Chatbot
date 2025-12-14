@@ -43,6 +43,10 @@ app.register_blueprint(upload_bp)
 app.register_blueprint(travel_log_bp)
 app.register_blueprint(posts_bp)
 
+# Register STT route (isolated)
+from stt.routes import speech_bp
+app.register_blueprint(speech_bp)
+
 # Serve uploaded files as static content
 uploads_dir = os.path.join(os.path.dirname(__file__), 'uploads')
 if not os.path.exists(uploads_dir):
