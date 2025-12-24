@@ -1,4 +1,9 @@
-from flask import Flask, jsonify, request
+"""
+Flask application entry point.
+Initializes Flask app, configures session, CORS, and registers blueprints.
+"""
+
+from flask import Flask, jsonify
 from flask_session import Session
 from flask_cors import CORS
 from pymongo import MongoClient
@@ -16,64 +21,21 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 app.config.from_object(Config)
 
-# ---------------------------------------------------------
-# 1. DB Connect
-# ---------------------------------------------------------
-try:
-    connect(host=Config.MONGODB_URI)
-    logger.info("✅ Connected to MongoDB via MongoEngine")
-except Exception as e:
-    logger.error(f"❌ Failed to connect MongoEngine: {e}")
+# Initialize MongoDB client for session storage
+mongo_client = MongoClient(Config.MONGODB_URI)
+app.config["SESSION_MONGODB"] = mongo_client
+app.config["SESSION_MONGODB_DB"] = "Authentication"
+app.config["SESSION_MONGODB_COLLECT"] = "Sessions"
 
-try:
-    mongo_client = MongoClient(Config.MONGODB_URI)
-    app.config["SESSION_MONGODB"] = mongo_client
-    app.config["SESSION_MONGODB_DB"] = "Authentication"
-    app.config["SESSION_MONGODB_COLLECT"] = "Sessions"
-    app.config["APP_MONGO_CLIENT"] = mongo_client
-    app.config["APP_MONGO_DBNAME"] = getattr(Config, "MONGODB_APP_DBNAME", "VoyAIage")
-except Exception as e:
-    logger.error(f"❌ Failed to connect PyMongo: {e}")
+# Reuse the same Mongo client for application data (travel log, locations, ...)
+app.config["APP_MONGO_CLIENT"] = mongo_client
+app.config["APP_MONGO_DBNAME"] = getattr(Config, "MONGODB_APP_DBNAME", "VoyAIage")
 
 # Initialize Flask-Session
 Session(app)
 
-# ---------------------------------------------------------
-# 2. CẤU HÌNH CORS (PHIÊN BẢN DEBUG CHI TIẾT)
-# ---------------------------------------------------------
-
-# Tắt tự động của thư viện để dùng code thủ công phía dưới
-# CORS(app)  <-- Tạm tắt dòng này để tránh xung đột
-
-@app.after_request
-def after_request_func(response):
-    # Lấy Origin từ request
-    origin = request.headers.get('Origin')
-    
-    # 1. Lấy danh sách cho phép và dọn sạch khoảng trắng thừa
-    allowed_origins = [url.strip() for url in Config.ALLOWED_ORIGINS]
-    
-    # --- LOG DEBUG (Xem ở Terminal CMD) ---
-    if origin:
-        print(f"🔍 DEBUG CORS: Request from '{origin}' | Allowed: {allowed_origins}")
-    
-    # 2. Logic kiểm tra và cấp quyền "Gương" (Mirror)
-    if origin and (origin in allowed_origins or "*" in allowed_origins):
-        response.headers['Access-Control-Allow-Origin'] = origin
-        response.headers['Access-Control-Allow-Credentials'] = 'true'
-        response.headers['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS, PUT, DELETE'
-        response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, X-Requested-With'
-        print(f"✅ Đã thêm Header CORS cho: {origin}")
-    else:
-        # Nếu không khớp, thử hard-code luôn localhost:5173 để cứu vãn
-        if origin == "http://localhost:5173":
-             response.headers['Access-Control-Allow-Origin'] = origin
-             response.headers['Access-Control-Allow-Credentials'] = 'true'
-             response.headers['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS, PUT, DELETE'
-             response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, X-Requested-With'
-             print("⚠️ Force allow localhost:5173 (Fallback)")
-
-    return response
+# Initialize CORS
+CORS(app, supports_credentials=True, origins=Config.ALLOWED_ORIGINS)
 
 # Register blueprints
 app.register_blueprint(auth_bp)
@@ -87,23 +49,29 @@ from stt.routes import speech_bp
 app.register_blueprint(speech_bp)
 
 # Serve uploaded files as static content
-# Serve uploaded files
 uploads_dir = os.path.join(os.path.dirname(__file__), 'uploads')
 if not os.path.exists(uploads_dir):
     os.makedirs(uploads_dir)
-
-app.static_folder = None 
+app.static_folder = None  # Disable default static folder
 @app.route('/uploads/<filename>')
 def serve_upload(filename):
+    """Serve uploaded files from the uploads directory."""
     from flask import send_from_directory, abort
     try:
         return send_from_directory(uploads_dir, filename)
     except Exception:
         abort(404)
 
-# Chatbot
+
 def initialize_chatbot():
-    if not Config.CHATBOT_ENABLED: return
+    """
+    Initialize the tourism chatbot system.
+    This function loads the RAG system, database, and agent.
+    """
+    if not Config.CHATBOT_ENABLED:
+        logger.info("⚠️ Chatbot is disabled via CHATBOT_ENABLED config")
+        return
+    
     try:
         logger.info("🚀 Initializing tourism chatbot system...")
         
@@ -116,8 +84,8 @@ def initialize_chatbot():
         # Import chatbot modules
         from tourism_chatbot.rag.rag_engine import initialize_rag_system
         from tourism_chatbot.database import get_connection_pool, initialize_checkpointer
-        from tourism_chatbot.database.filtered_checkpointer import FilteredCheckpointer
         from tourism_chatbot.agents.tourism_agent import create_tourism_agent
+        from tourism_chatbot.database.filtered_checkpointer import FilteredCheckpointer
         
         # Initialize RAG system
         logger.info("📚 Loading RAG system...")
@@ -152,12 +120,19 @@ def initialize_chatbot():
 
 @app.route('/')
 def home():
+    """Health check endpoint."""
     return jsonify({"message": "VoyAIage Server is Running"}), 200
+
+
+# Initialize chatbot when app starts
+with app.app_context():
+    initialize_chatbot()
+
 
 if __name__ == "__main__":
     port = int(os.environ.get('PORT', 8080))
     app.run(
         host="0.0.0.0",
-        port=port,
+        port=Config.PORT,
         debug=Config.DEBUG
     )
