@@ -54,17 +54,25 @@ class Config:
     SESSION_TYPE = "mongodb"
     SESSION_PERMANENT = True
     
-    # Cookie settings - different for dev vs production
-    # In production (HTTPS), use SameSite=None and Secure=True
-    # In development (HTTP), use SameSite=Lax and Secure=False
+        # Cookie settings
+    # - If your frontend and backend are on different domains (e.g. ngrok), you typically need:
+    #     SESSION_COOKIE_SAMESITE=None
+    #     SESSION_COOKIE_SECURE=True
+    # - Allow overriding via env vars to support local+ngrok without switching FLASK_ENV.
     IS_PRODUCTION = os.getenv('FLASK_ENV') == 'production'
-    
-    if IS_PRODUCTION:
-        SESSION_COOKIE_SAMESITE = "None"
-        SESSION_COOKIE_SECURE = True
+
+    _cookie_samesite_override = os.getenv('SESSION_COOKIE_SAMESITE')
+    _cookie_secure_override = os.getenv('SESSION_COOKIE_SECURE')
+
+    if _cookie_samesite_override is not None:
+        SESSION_COOKIE_SAMESITE = _cookie_samesite_override
     else:
-        SESSION_COOKIE_SAMESITE = "Lax"
-        SESSION_COOKIE_SECURE = False
+        SESSION_COOKIE_SAMESITE = "None" if IS_PRODUCTION else "Lax"
+
+    if _cookie_secure_override is not None:
+        SESSION_COOKIE_SECURE = _cookie_secure_override.lower() == 'true'
+    else:
+        SESSION_COOKIE_SECURE = True if IS_PRODUCTION else False
     
     SESSION_COOKIE_HTTPONLY = True
     # SESSION_COOKIE_SAMESITE = "Lax"  

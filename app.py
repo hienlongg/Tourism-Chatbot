@@ -7,7 +7,7 @@ from flask import Flask, jsonify
 from flask_session import Session
 from flask_cors import CORS
 from pymongo import MongoClient
-from mongoengine import connect
+from werkzeug.middleware.proxy_fix import ProxyFix
 from config import Config
 from backend.routes import auth_bp, chat_bp, upload_bp, init_chatbot, travel_log_bp, posts_bp
 import logging
@@ -20,6 +20,10 @@ logger = logging.getLogger(__name__)
 # Initialize Flask app
 app = Flask(__name__)
 app.config.from_object(Config)
+
+# If running behind a reverse proxy (e.g. ngrok, Render), trust forwarded headers.
+# This helps Flask correctly detect HTTPS and host.
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
 
 # Initialize MongoDB client for session storage
 mongo_client = MongoClient(Config.MONGODB_URI)
@@ -133,6 +137,6 @@ if __name__ == "__main__":
     port = int(os.environ.get('PORT', 8080))
     app.run(
         host="0.0.0.0",
-        port=Config.PORT,
+        port=port,
         debug=Config.DEBUG
     )
