@@ -6,6 +6,7 @@ mongoengine>=0.29.1
 Werkzeug>=2.3
 python-dotenv>=1.0.0
 gunicorn
+requests>=2.31.0
 
 # LangChain and AI dependencies
 langchain>=0.3.0
@@ -28,3 +29,6 @@ pandas>=2.0.0
 # ML/Embeddings
 sentence-transformers>=2.2.0
 torch>=2.0.0
+
+# Post feature dependencies
+bleach>=6.0.0

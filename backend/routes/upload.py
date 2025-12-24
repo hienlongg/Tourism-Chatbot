@@ -135,7 +135,7 @@ def upload_image():
         
         # Save file
         file.save(filepath)
-        logger.info(f"✅ Image uploaded successfully: {filename}")
+        logger.info(f"Image uploaded successfully: {filename}")
         
         # Return relative URL for client
         url = f"/uploads/{filename}"
@@ -148,7 +148,7 @@ def upload_image():
         }), 200
         
     except Exception as e:
-        logger.error(f"❌ Error uploading image: {str(e)}")
+        logger.error(f"Error uploading image: {str(e)}")
         return jsonify({
             "success": False,
             "error": f"Error uploading image: {str(e)}"
@@ -190,5 +190,114 @@ def serve_image(filename: str):
         return send_from_directory(UPLOAD_FOLDER, filename)
         
     except Exception as e:
-        logger.error(f"❌ Error serving image: {str(e)}")
+        logger.error(f"Error serving image: {str(e)}")
         abort(500)
+
+
+@upload_bp.route('/post-image', methods=['POST'])
+@login_required
+def upload_post_image():
+    """
+    Upload multiple images for posts (local storage).
+    Supports up to 5 images per request.
+    
+    Request:
+        - Method: POST
+        - Content-Type: multipart/form-data
+        - Field name: 'images' (can be multiple files)
+    
+    Response:
+        {
+            "success": true,
+            "urls": ["/uploads/image1.jpg", "/uploads/image2.jpg"],
+            "message": "2 image(s) uploaded successfully"
+        }
+    """
+    try:
+        # Check if request has file part
+        if 'images' not in request.files:
+            logger.warning("Upload request missing 'images' field")
+            return jsonify({
+                "success": False,
+                "error": "No images provided. Please include 'images' field in your request."
+            }), 400
+        
+        files = request.files.getlist('images')
+        
+        if not files or len(files) == 0:
+            return jsonify({
+                "success": False,
+                "error": "No images selected"
+            }), 400
+        
+        # Limit to 5 images per request
+        if len(files) > 5:
+            return jsonify({
+                "success": False,
+                "error": "Maximum 5 images allowed per request"
+            }), 400
+        
+        # Create upload directory if needed
+        create_upload_directory()
+        
+        uploaded_urls = []
+        
+        for file in files:
+            # Check if file was actually selected
+            if file.filename == '':
+                continue
+            
+            # Check file extension
+            if not allowed_file(file.filename):
+                logger.warning(f"Upload attempt with disallowed file type: {file.filename}")
+                return jsonify({
+                    "success": False,
+                    "error": f"File type not allowed for {file.filename}. Allowed types: {', '.join(ALLOWED_EXTENSIONS)}"
+                }), 400
+            
+            # Check file size
+            file.seek(0, os.SEEK_END)
+            file_size = file.tell()
+            file.seek(0)
+            
+            if file_size > MAX_FILE_SIZE:
+                logger.warning(f"Upload attempt with oversized file: {file_size} bytes")
+                return jsonify({
+                    "success": False,
+                    "error": f"File {file.filename} too large. Maximum size: {MAX_FILE_SIZE / 1024 / 1024}MB"
+                }), 413
+            
+            if file_size == 0:
+                continue
+            
+            # Generate unique filename
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            file_ext = secure_filename(file.filename).rsplit('.', 1)[1].lower()
+            filename = f"post_{timestamp}_{os.urandom(4).hex()}.{file_ext}"
+            filepath = os.path.join(UPLOAD_FOLDER, filename)
+            
+            # Save file
+            file.save(filepath)
+            logger.info(f"Image uploaded: {filename}")
+            
+            # Add URL to list
+            uploaded_urls.append(f"/uploads/{filename}")
+        
+        if not uploaded_urls:
+            return jsonify({
+                "success": False,
+                "error": "No valid images were uploaded"
+            }), 400
+        
+        return jsonify({
+            "success": True,
+            "urls": uploaded_urls,
+            "message": f"{len(uploaded_urls)} image(s) uploaded successfully"
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Error uploading images: {str(e)}")
+        return jsonify({
+            "success": False,
+            "error": f"Error uploading images: {str(e)}"
+        }), 500

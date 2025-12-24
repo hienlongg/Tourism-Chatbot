@@ -7,8 +7,9 @@ from flask import Flask, jsonify
 from flask_session import Session
 from flask_cors import CORS
 from pymongo import MongoClient
+from werkzeug.middleware.proxy_fix import ProxyFix
 from config import Config
-from backend.routes import auth_bp, chat_bp, upload_bp, init_chatbot, travel_log_bp
+from backend.routes import auth_bp, chat_bp, upload_bp, init_chatbot, travel_log_bp, posts_bp
 import logging
 import os
 
@@ -19,6 +20,10 @@ logger = logging.getLogger(__name__)
 # Initialize Flask app
 app = Flask(__name__)
 app.config.from_object(Config)
+
+# If running behind a reverse proxy (e.g. ngrok, Render), trust forwarded headers.
+# This helps Flask correctly detect HTTPS and host.
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
 
 # Initialize MongoDB client for session storage
 mongo_client = MongoClient(Config.MONGODB_URI)
@@ -41,6 +46,11 @@ app.register_blueprint(auth_bp)
 app.register_blueprint(chat_bp)
 app.register_blueprint(upload_bp)
 app.register_blueprint(travel_log_bp)
+app.register_blueprint(posts_bp)
+
+# Register STT route (isolated)
+from stt.routes import speech_bp
+app.register_blueprint(speech_bp)
 
 # Serve uploaded files as static content
 uploads_dir = os.path.join(os.path.dirname(__file__), 'uploads')
@@ -79,17 +89,20 @@ def initialize_chatbot():
         from tourism_chatbot.rag.rag_engine import initialize_rag_system
         from tourism_chatbot.database import get_connection_pool, initialize_checkpointer
         from tourism_chatbot.agents.tourism_agent import create_tourism_agent
+        from tourism_chatbot.database.filtered_checkpointer import FilteredCheckpointer
         
         # Initialize RAG system
         logger.info("📚 Loading RAG system...")
-        vector_store, llm, embeddings = initialize_rag_system(api_key=api_key)
+        vector_store, llm = initialize_rag_system(api_key=api_key)
         
         # Initialize database and checkpointer for conversation memory
         logger.info("🗄️ Connecting to PostgreSQL for conversation memory...")
         try:
             pool = get_connection_pool()
-            checkpointer = initialize_checkpointer(pool)
-            logger.info("✅ PostgreSQL checkpointer initialized")
+            base_checkpointer = initialize_checkpointer(pool)
+            # Wrap checkpointer to filter out image URLs before saving
+            checkpointer = FilteredCheckpointer(base_checkpointer)
+            logger.info("✅ PostgreSQL checkpointer initialized (with image filtering)")
         except Exception as db_error:
             logger.warning(f"⚠️ PostgreSQL not available: {db_error}")
             logger.info("📝 Running without conversation memory persistence")
@@ -121,8 +134,9 @@ with app.app_context():
 
 
 if __name__ == "__main__":
+    port = int(os.environ.get('PORT', 8080))
     app.run(
         host="0.0.0.0",
-        port=Config.PORT,
+        port=port,
         debug=Config.DEBUG
     )

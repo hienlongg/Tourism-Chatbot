@@ -1,7 +1,13 @@
-from tourism_chatbot.rag.rag_engine import initialize_embeddings, load_vector_store
+from tourism_chatbot.rag.rag_engine import (
+    initialize_embeddings, 
+    load_vector_store,
+    semantic_search,
+    filter_visited_locations,
+    build_context
+)
 from langchain.tools import tool
 import logging
-from typing import List
+from typing import List, Dict, Tuple
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -24,51 +30,67 @@ def set_user_context(visited_ids: List[str], allow_revisit: bool = False):
     logger.debug(f"📋 User context updated: {len(visited_ids)} visited locations, allow_revisit={allow_revisit}")
 
 @tool(response_format="content_and_artifact")
-def retrieve_context(query: str):
-    """Retrieve tourism information to help answer a query about Vietnamese destinations.
+def retrieve_context(query: str) -> Tuple[str, Dict]:
+    """Retrieve tourism information and build context for LLM.
     
-    This tool searches the tourism database and automatically filters out locations 
-    the user has already visited (unless revisiting is allowed).
+    This tool:
+    1. Searches the tourism database semantically
+    2. Filters out locations the user has already visited (unless revisiting is allowed)
+    3. Builds structured context ready for the LLM
+    
+    Returns formatted context string and metadata about the results.
     """
     logger.info(f"🔧 [TOOL CALLED] retrieve_context")
     logger.info(f"📝 Query: {query}")
     
-    # Retrieve more documents to account for filtering
-    k = 5 if _USER_VISITED_IDS and not _ALLOW_REVISIT else 3
-    retrieved_docs = vector_store.similarity_search(query, k=k)
-    
+    # STEP 1: Semantic Search
+    top_k = 5 if _USER_VISITED_IDS and not _ALLOW_REVISIT else 3
+    retrieved_docs = semantic_search(vector_store, query, top_k=top_k, verbose=False)
     logger.info(f"📊 Retrieved {len(retrieved_docs)} documents (before filtering)")
     
-    # Filter out visited locations if needed
-    filtered_docs = []
-    filtered_out = []
-    
-    for doc in retrieved_docs:
-        loc_id = doc.metadata.get('loc_id', '')
-        
-        if _USER_VISITED_IDS and not _ALLOW_REVISIT and loc_id in _USER_VISITED_IDS:
-            filtered_out.append(doc.metadata.get('TenDiaDanh', 'N/A'))
-        else:
-            filtered_docs.append(doc)
-            
-        # Stop when we have enough recommendations
-        if len(filtered_docs) >= 3:
-            break
+    # STEP 2: Filter visited locations
+    new_places, old_places, filtered_count = filter_visited_locations(
+        retrieved_docs,
+        _USER_VISITED_IDS,
+        allow_revisit=_ALLOW_REVISIT,
+        verbose=False
+    )
     
     # Log filtering results
-    if filtered_out:
-        logger.info(f"🚫 Filtered out {len(filtered_out)} visited locations: {', '.join(filtered_out[:3])}")
+    if old_places:
+        filtered_names = [doc.metadata.get('TenDiaDanh', 'N/A') for doc in old_places[:3]]
+        logger.info(f"🚫 Filtered out {len(old_places)} visited locations: {', '.join(filtered_names)}")
     
-    logger.info(f"✅ Returning {len(filtered_docs)} documents")
-    if filtered_docs:
-        logger.info(f"📍 Top result: {filtered_docs[0].metadata.get('TenDiaDanh', 'N/A')}")
+    # Determine which places to use for context
+    final_places = retrieved_docs if _ALLOW_REVISIT else new_places
     
-    # Build serialized response
-    if not filtered_docs:
-        return "Không tìm thấy địa điểm mới phù hợp. Người dùng đã ghé thăm tất cả địa điểm tương tự.", []
+    logger.info(f"✅ Using {len(final_places)} documents for context building")
+    if final_places:
+        logger.info(f"📍 Top result: {final_places[0].metadata.get('TenDiaDanh', 'N/A')}")
     
-    serialized = "\n\n".join(
-        (f"Source: {doc.metadata}\nContent: {doc.page_content}")
-        for doc in filtered_docs
+    # Handle case where no places remain
+    if not final_places:
+        return (
+            "Không tìm thấy địa điểm mới phù hợp. Người dùng đã ghé thăm tất cả địa điểm tương tự.",
+            {
+                'context': "",
+                'new_places': [],
+                'old_places': old_places,
+                'filtered_count': filtered_count,
+                'locations_count': 0
+            }
+        )
+    
+    # STEP 3: Build context for LLM
+    context = build_context(final_places, _USER_VISITED_IDS, _ALLOW_REVISIT, verbose=False)
+    
+    return (
+        context,
+        {
+            'context': context,
+            'new_places': new_places,
+            'old_places': old_places,
+            'filtered_count': filtered_count,
+            'locations_count': len(final_places)
+        }
     )
-    return serialized, filtered_docs

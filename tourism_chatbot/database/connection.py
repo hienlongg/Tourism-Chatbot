@@ -12,33 +12,22 @@ logger = logging.getLogger(__name__)
 
 def get_db_uri() -> str:
     """
-    Build PostgreSQL connection URI from environment variables.
+    Get PostgreSQL connection URI from environment variables.
     
     Returns:
         str: Database connection URI
     
     Raises:
-        ValueError: If required environment variables are missing
+        ValueError: If DATABASE_URL environment variable is missing
     """
-    required_vars = ["PSQL_USERNAME", "PSQL_PASSWORD", "PSQL_HOST", "PSQL_DBNAME"]
-    missing_vars = [var for var in required_vars if not os.getenv(var)]
+    db_uri = os.getenv("DATABASE_URL")
     
-    if missing_vars:
-        raise ValueError(f"Missing required environment variables: {', '.join(missing_vars)}")
+    if not db_uri:
+        raise ValueError("Missing required environment variable: DATABASE_URL")
     
-    db_config = {
-        "host": os.getenv("PSQL_HOST", "localhost"),
-        "port": os.getenv("PSQL_PORT", "5432"),
-        "dbname": os.getenv("PSQL_DBNAME"),
-        "user": os.getenv("PSQL_USERNAME"),
-        "password": os.getenv("PSQL_PASSWORD")
-    }
+    logger.info("Database URI retrieved from environment")
     
-    uri = f"postgresql://{db_config['user']}:{db_config['password']}@{db_config['host']}:{db_config['port']}/{db_config['dbname']}"
-    
-    logger.info(f"Database URI created for {db_config['host']}:{db_config['port']}/{db_config['dbname']}")
-    
-    return uri
+    return db_uri
 
 
 def get_connection_pool(
