@@ -11,3 +11,6 @@ data/raw/crawled_images
 
 .vscode/
 uploads/
+my-tourism-backend
+
+huggingface_spaces/
