@@ -87,6 +87,36 @@ def slugify(value: str) -> str:
 # DATA LOADING & PROCESSING
 # ============================================================================
 
+def load_csv_data(csv_path: str) -> pd.DataFrame:
+    """
+    Load tourism location CSV data with loc_id as index.
+    
+    This is a lightweight version that loads data without printing logs,
+    suitable for use in tools and other modules.
+    
+    Args:
+        csv_path: Path to the CSV file
+    
+    Returns:
+        Processed DataFrame with loc_id as index
+    """
+    df = pd.read_csv(csv_path)
+    
+    # Generate loc_id using slugify
+    df['loc_id'] = df['TenDiaDanh'].apply(slugify)
+    
+    # Filter: Keep only rows with TenDiaDanh, DiaChi (NoiDung can be null)
+    df_filtered = df.dropna(subset=['TenDiaDanh', 'DiaChi']).copy()
+    
+    # Fill NaN in NoiDung with empty string
+    df_filtered['NoiDung'] = df_filtered['NoiDung'].fillna('')
+    
+    # Set loc_id as index for fast lookup
+    df_filtered = df_filtered.set_index('loc_id')
+    
+    return df_filtered
+
+
 def load_and_process_data(csv_path: str) -> pd.DataFrame:
     """
     Load tourism location CSV and prepare it for vectorization.
@@ -825,6 +855,7 @@ def initialize_rag_system(
 
 __all__ = [
     'slugify',
+    'load_csv_data',
     'load_and_process_data',
     'create_documents',
     'initialize_embeddings',
