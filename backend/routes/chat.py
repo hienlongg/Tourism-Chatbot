@@ -7,11 +7,14 @@ from flask import Blueprint, request, jsonify, session, Response, stream_with_co
 from tourism_chatbot.agents.tools import set_user_context, retrieve_context
 from tourism_chatbot.memory import UserContextManager
 from tourism_chatbot.rag.rag_engine import slugify
+from tourism_chatbot.vision import get_image_search_engine
 from backend.utils.location_extractor import extract_locations_from_answer
 import logging
 import json
 import re
+import os
 from typing import List
+from pathlib import Path
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -24,6 +27,7 @@ chat_bp = Blueprint("chat", __name__, url_prefix="/api/chat")
 _AGENT_WITH_MEMORY = None
 _VECTOR_STORE = None
 _LLM = None
+_IMAGE_SEARCH_ENGINE = None
 
 
 def init_chatbot(agent, vector_store, llm):
@@ -36,10 +40,19 @@ def init_chatbot(agent, vector_store, llm):
         vector_store: ChromaDB vector store
         llm: LLM instance
     """
-    global _AGENT_WITH_MEMORY, _VECTOR_STORE, _LLM
+    global _AGENT_WITH_MEMORY, _VECTOR_STORE, _LLM, _IMAGE_SEARCH_ENGINE
     _AGENT_WITH_MEMORY = agent
     _VECTOR_STORE = vector_store
     _LLM = llm
+    
+    # Initialize image search engine
+    try:
+        _IMAGE_SEARCH_ENGINE = get_image_search_engine()
+        logger.info("✅ Image search engine initialized in chat routes")
+    except Exception as e:
+        logger.warning(f"⚠️  Failed to initialize image search engine: {e}")
+        _IMAGE_SEARCH_ENGINE = None
+    
     logger.info("Chat routes initialized with chatbot components")
 
 
@@ -162,6 +175,86 @@ def prepare_message_for_checkpointer(message_content):
         # Filter to only keep text content
         return [item for item in message_content if item.get("type") == "text"]
     return message_content
+
+
+def process_image_for_location(image_url: str) -> dict:
+    """
+    Process an image URL to identify the location using vision model.
+    
+    Args:
+        image_url: URL or path to the image
+        
+    Returns:
+        dict with success status, location description, and metadata
+    """
+    if not _IMAGE_SEARCH_ENGINE:
+        return {
+            "success": False,
+            "error": "Image search engine not available",
+            "description": ""
+        }
+    
+    try:
+        # Convert URL to file path
+        # Extract image filename from URL
+        if image_url.startswith("http"):
+            # Extract filename from full URL (e.g., http://localhost:8080//api/upload/image/image_20251228_142917_fbb3e3e7.jpg)
+            image_filename = image_url.split("/")[-1]
+            file_path = os.path.join("uploads", image_filename)
+        else:
+            # Relative path already provided
+            file_path = os.path.join(os.getcwd(), image_url.lstrip("/"))
+        # Ensure the file exists
+        if not os.path.exists(file_path):
+            logger.error(f"Image file not found: {file_path}")
+            return {
+                "success": False,
+                "error": f"Image file not found at path: {file_path}",
+                "description": ""
+            }
+        
+        logger.info(f"🔍 Identifying location from image: {file_path}")
+        
+        # Use vision model to identify location
+        location_matches = _IMAGE_SEARCH_ENGINE.identify_location(file_path, top_k=3)
+        
+        if not location_matches:
+            return {
+                "success": False,
+                "error": "Could not identify location from image",
+                "description": ""
+            }
+        
+        # Get top match
+        top_match = location_matches[0]
+        location_name = top_match['location_name']
+        confidence = top_match['confidence']
+        
+        logger.info(f"🎯 Identified location: {location_name} (confidence: {confidence:.2%})")
+        
+        # Build description for chatbot
+        description = f"Người dùng đã gửi một hình ảnh. Địa điểm trong hình được nhận diện là: {location_name} (độ tin cậy: {confidence:.0%})."
+        
+        # Add alternatives if confidence is low
+        if confidence < 0.8 and len(location_matches) > 1:
+            alternatives = [match['location_name'] for match in location_matches[1:3]]
+            description += f" Các địa điểm tương tự khác: {', '.join(alternatives)}."
+        
+        return {
+            "success": True,
+            "location_name": location_name,
+            "confidence": confidence,
+            "description": description,
+            "matches": location_matches
+        }
+        
+    except Exception as e:
+        logger.error(f"Error processing image: {str(e)}", exc_info=True)
+        return {
+            "success": False,
+            "error": str(e),
+            "description": ""
+        }
 
 
 # API ENDPOINTS
@@ -344,14 +437,35 @@ def send_message():
         # Process with agent
         set_user_context(visited_ids=visited_ids, allow_revisit=allow_revisit)
 
-        # Prepare message content - include image for agent processing
-        # The FilteredCheckpointer will strip images before saving to database
-        message_content = user_message
-
-        # Add image context if provided
+        # Process image if provided
+        image_context = None
         if image_url:
-            message_content = f"{user_message}\n\n[Image attached: {image_url}]"
-            logger.info(f"📸 Image attached to message: {image_url}")
+            logger.info(f"📸 Processing image: {image_url}")
+            image_result = process_image_for_location(image_url)
+            
+            if image_result['success']:
+                image_context = image_result['description']
+                logger.info(f"✅ Location identified: {image_result.get('location_name', 'Unknown')}")
+            else:
+                logger.warning(f"⚠️  Image processing failed: {image_result.get('error', 'Unknown error')}")
+                # Return error response
+                return (
+                    jsonify(
+                        {
+                            "success": False,
+                            "error": image_result.get('error', 'Failed to process image'),
+                            "type": "error",
+                        }
+                    ),
+                    400,
+                )
+
+        # Prepare message content - combine user message with image context
+        if image_context:
+            # Prepend image context to user message
+            message_content = f"{image_context}\n\nNgười dùng hỏi: {user_message}"
+        else:
+            message_content = user_message
 
         inputs = {"messages": [("user", message_content)]}
 
@@ -489,22 +603,33 @@ def send_message_stream():
                 visited_ids=visited_ids, allow_revisit=allow_revisit
             )
 
-            # Prepare message content with image for agent processing
-            # The FilteredCheckpointer will strip images before saving to database
-            message_content = [{"type": "text", "text": user_message}]
-
+            # Process image if provided
+            image_context = None
             if image_url:
-                # Handle both absolute and relative URLs
-                # If URL starts with http:// or https://, use as-is
-                # Otherwise, prepend the frontend base URL
-                if image_url.startswith('http://') or image_url.startswith('https://'):
-                    full_image_url = image_url
-                else:
-                    full_image_url = f"http://localhost:5173{image_url}"
+                logger.info(f"📸 Processing image for streaming: {image_url}")
+                image_result = process_image_for_location(image_url)
                 
-                message_content.append(
-                    {"type": "image", "url": full_image_url}
-                )
+                if image_result['success']:
+                    image_context = image_result['description']
+                    logger.info(f"✅ Location identified: {image_result.get('location_name', 'Unknown')}")
+                else:
+                    logger.warning(f"⚠️  Image processing failed: {image_result.get('error', 'Unknown error')}")
+                    # Send error event
+                    yield (
+                        "data: "
+                        + json.dumps(
+                            {"error": image_result.get('error', 'Failed to process image')},
+                            ensure_ascii=False,
+                        )
+                        + "\n\n"
+                    )
+                    return
+
+            # Prepare message content - combine user message with image context
+            if image_context:
+                message_content = f"{image_context}\n\nNgười dùng hỏi: {user_message}"
+            else:
+                message_content = user_message
 
             inputs = {"messages": [("user", message_content)]}
 
