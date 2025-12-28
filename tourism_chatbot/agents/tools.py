@@ -52,8 +52,6 @@ def set_user_context(visited_ids: List[str], allow_revisit: bool = False):
 @tool(response_format="content_and_artifact")
 def retrieve_context(query: str) -> Tuple[str, Dict]:
     """Retrieve tourism information and build context for LLM.
-def retrieve_context(query: str) -> Tuple[str, Dict]:
-    """Retrieve tourism information and build context for LLM.
     
     This tool:
     1. Searches the tourism database semantically

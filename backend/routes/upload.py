@@ -54,7 +54,6 @@ def health_check():
 
 
 @upload_bp.route('/image', methods=['POST'])
-@login_required
 def upload_image():
     """
     Upload an image file.
