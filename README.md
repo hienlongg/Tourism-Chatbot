@@ -1,6 +1,24 @@
-# Tourism Chatbot - Vietnamese AI Travel Assistant
+# 🌏 Tourism Chatbot - Vietnamese AI Travel Assistant
 
-A conversational AI chatbot for Vietnamese tourism recommendations using RAG (Retrieval-Augmented Generation), LangGraph agents, and Flask backend with session management.
+[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
+[![Flask](https://img.shields.io/badge/Flask-3.1+-green.svg)](https://flask.palletsprojects.com/)
+[![LangChain](https://img.shields.io/badge/LangChain-1.2+-orange.svg)](https://python.langchain.com/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Hugging Face](https://img.shields.io/badge/🤗-Hugging%20Face-yellow)](https://huggingface.co/spaces/hienlong/my-tourism-backend)
+
+An intelligent conversational AI chatbot for Vietnamese tourism recommendations powered by RAG (Retrieval-Augmented Generation), LangGraph agentic workflows, and Flask REST API. Features multi-modal search with image capabilities, personalized travel logs, social features, and persistent conversation memory.
+
+## ✨ Key Features
+
+- 🤖 **LangGraph Agents** - Advanced agentic AI with tool use and state management
+- 🔍 **RAG System** - Retrieval-Augmented Generation with ChromaDB vector store
+- 🖼️ **Image Search** - Multi-modal search using CLIP for visual tourism discovery
+- 📝 **Travel Logs** - Personal travel diary with location tracking
+- 👥 **Social Posts** - Share travel experiences with rich media
+- 💬 **Persistent Memory** - PostgreSQL-backed conversation checkpointing
+- 🇻🇳 **Vietnamese Support** - Full Vietnamese language processing
+- 🔐 **Authentication** - Secure user sessions with bcrypt encryption
+- 🌊 **Streaming Responses** - Real-time LLM output for better UX
 
 ## 📁 Project Structure
 
@@ -9,56 +27,72 @@ Tourism-Chatbot/
 ├── app.py                        # Flask application entry point
 ├── config.py                     # Configuration settings
 ├── requirements.txt              # Python dependencies
+├── Dockerfile                    # Docker configuration for deployment
 │
-├── backend/
-│   ├── models/                   # SQLAlchemy/MongoEngine models
-│   │   ├── user.py              # User model
-│   │   └── chat.py              # Chat history model
-│   ├── routes/
-│   │   ├── authentication.py    # Auth endpoints (login, register, logout)
-│   │   ├── chat.py              # Chat endpoint integration with tourism agent
-│   │   └── upload.py            # File upload handling
+├── backend/                      # Backend REST API
+│   ├── models/                   # Database models
+│   │   ├── user.py              # User authentication model
+│   │   ├── chat.py              # Chat history model
+│   │   ├── post.py              # Social post model
+│   │   └── travel_log.py        # Travel log model
+│   ├── routes/                   # API endpoints
+│   │   ├── authentication.py    # Auth (login, register, logout)
+│   │   ├── chat.py              # Chat with tourism agent
+│   │   ├── posts.py             # Social post CRUD
+│   │   ├── travel_log.py        # Travel log management
+│   │   └── upload.py            # File/image upload
 │   ├── middlewares/
-│   │   └── decorators.py        # Custom middleware/decorators
-│   └── utils/
-│       └── validators.py        # Input validation utilities
+│   │   └── decorators.py        # Auth decorators & middleware
+│   └── utils/                    # Utility functions
+│       ├── validators.py        # Input validation
+│       ├── post_validator.py    # Post content validation
+│       ├── image_resolver.py    # Image URL resolution
+│       └── location_extractor.py # Extract location from text
 │
-├── tourism_chatbot/              # Tourism AI agent system
+├── tourism_chatbot/              # AI Tourism Agent System
 │   ├── agents/
-│   │   ├── tourism_agent.py     # LangGraph tourism agent with tool use
-│   │   └── tools.py             # Agent tools (retrieve_context, etc.)
+│   │   ├── tourism_agent.py     # LangGraph agent with tools
+│   │   └── tools.py             # RAG retrieval & location tools
 │   ├── rag/
-│   │   ├── __init__.py
-│   │   └── rag_engine.py        # RAG engine (embeddings, vector store)
+│   │   └── rag_engine.py        # Vector store & embeddings
+│   ├── vision/
+│   │   └── image_search.py      # CLIP-based image search
 │   ├── database/
-│   │   ├── connection.py        # Database connections (MongoDB, PostgreSQL)
-│   │   └── checkpointer.py      # LangGraph checkpointer for memory
+│   │   ├── connection.py        # DB connections (MongoDB, PostgreSQL)
+│   │   ├── checkpointer.py      # LangGraph memory checkpointer
+│   │   └── filtered_checkpointer.py # Filtered conversation history
 │   ├── memory/
-│   │   └── context_manager.py   # User context/session management
-│   ├── crawling_data/
-│   │   ├── crawl_desinations_description.py
-│   │   └── crawl_images.py
-│   └── utils/
-│       └── thread_utils.py      # Threading utilities
+│   │   └── context_manager.py   # User session context
+│   ├── clients/
+│   │   ├── embedding_client.py  # Custom embedding API client
+│   │   └── langchain_embedding_adapter.py # LangChain adapter
+│   └── crawling_data/            # Data collection scripts
+│       ├── crawl_desinations_description.py
+│       └── crawl_images.py
 │
 ├── data/
-│   ├── raw/                      # Raw data and images
+│   ├── raw/                      # Raw tourism data
 │   │   ├── danh_sach_dia_danh.txt
 │   │   ├── dia_danh_vn.json
-│   │   └── crawled_images/       # Tourism location images
+│   │   └── crawled_images/
 │   ├── processed/
-│   │   ├── danh_sach_thong_tin_dia_danh_chi_tiet.csv  # Processed locations
+│   │   ├── danh_sach_thong_tin_dia_danh_chi_tiet.csv
 │   │   └── manifest.csv
 │   └── vector_db/
-│       └── chroma_tourism/       # ChromaDB vector store
+│       └── chroma_tourism/       # ChromaDB vector database
 │
-├── test/
-│   └── test_integration.py       # Integration tests
+├── stt/                          # Speech-to-text module
+│   └── routes.py                 # STT API endpoints
 │
-├── notebooks/                    # Jupyter notebooks for exploration
-│   ├── Chatbot.ipynb
+├── test/                         # Test suite
+│   ├── test_integration.py
+│   ├── test_rag_functions.py
+│   └── manual_rag_test.py
+│
+├── notebooks/                    # Jupyter notebooks
 │   ├── RAG_Tourism_Recommendation.ipynb
 │   ├── CLIP.ipynb
+│   ├── Chatbot.ipynb
 │   └── EDA.ipynb
 │
 └── uploads/                      # User-uploaded files
@@ -68,10 +102,11 @@ Tourism-Chatbot/
 
 ### 1. Prerequisites
 
-- Python 3.10+
-- MongoDB (for session storage)
-- PostgreSQL (for LangGraph checkpointing)
-- Google Gemini API key
+- Python 3.11+
+- MongoDB (for session & app data storage)
+- PostgreSQL (for LangGraph conversation checkpointing)
+- Google Gemini API key (for LLM)
+- Hugging Face account (optional, for embeddings)
 
 ### 2. Install Dependencies
 
@@ -92,16 +127,17 @@ pip install -r requirements.txt
 
 **MongoDB:**
 ```bash
-# Start MongoDB (if using local installation)
-# Or use MongoDB Atlas cloud service
-# Update MONGODB_URI in config.py
+# Start MongoDB locally or use MongoDB Atlas
+# The app will use two databases:
+# - Authentication (for sessions)
+# - VoyAIage (for app data: travel logs, posts, locations)
 ```
 
 **PostgreSQL:**
 ```bash
-# For LangGraph checkpointing
-# Create a database and update DATABASE_URL in config.py
-# The schema will be created automatically
+# For LangGraph conversation checkpointing
+# Create a database named 'tourism_chatbot'
+# The schema will be auto-created by LangGraph
 ```
 
 ### 4. Set Environment Variables
@@ -109,81 +145,113 @@ pip install -r requirements.txt
 Create `.env` file in project root:
 ```bash
 # API Keys
-GEMINI_API_KEY="your-google-gemini-api-key"
+GEMINI_API_KEY=your-google-gemini-api-key
 
 # Database URLs
-MONGODB_URI="mongodb://localhost:27017"
-DATABASE_URL="postgresql://user:password@localhost:5432/tourism_chatbot"
+MONGODB_URI=mongodb://localhost:27017
+DATABASE_URL=postgresql://user:password@localhost:5432/tourism_chatbot
 
 # Flask Configuration
-FLASK_ENV="development"
-SECRET_KEY="your-secret-key"
-GOOGLE_CLIENT_ID="your-google-client-id"
+FLASK_ENV=development
+SECRET_KEY=your-secret-key-min-32-chars
+SESSION_COOKIE_SECURE=False  # Set to True in production with HTTPS
 
-# CORS allowed origins
-ALLOWED_ORIGINS="http://localhost:3000,http://localhost:8000"
+# CORS Configuration
+ALLOWED_ORIGINS=http://localhost:3000,http://localhost:8000
+
+# Optional: Custom Embedding API
+EMBEDDING_API_URL=your-embedding-api-endpoint
 ```
 
-Get your Google Gemini API key from: https://makersuite.google.com/app/apikey
+**Getting API Keys:**
+- **Google Gemini**: https://makersuite.google.com/app/apikey
+- **MongoDB Atlas**: https://www.mongodb.com/cloud/atlas (free tier available)
+- **Hugging Face**: https://huggingface.co/settings/tokens (for embeddings)
 
 ### 5. Run the Application
 
+**Development Mode:**
 ```bash
-# Start Flask development server
 python app.py
-
-# The API will be available at http://localhost:5000
+# API available at http://localhost:5000
 ```
 
-## 🎯 Features
+**Production Mode (with Gunicorn):**
+```bash
+gunicorn app:app --bind 0.0.0.0:5000 --workers 2 --timeout 120
+```
 
-### Core Functionality
-- **LangGraph Tourism Agent**: Agentic AI using LangChain with tool use and state management
-- **Semantic Search**: Find tourism locations using vector similarity (ChromaDB)
-- **RAG System**: Retrieval-Augmented Generation for accurate tourist information
-- **User Sessions**: Persistent user sessions with visit history tracking
-- **History Management**: Remember visited places and filter revisit suggestions
-- **Streaming Responses**: Real-time LLM output for better user experience
-- **Vietnamese Language**: Full support for Vietnamese text and culture
-- **Multi-user Support**: MongoDB-backed session management
-- **Conversation Memory**: PostgreSQL-based checkpointing with LangGraph
+**Docker Deployment:**
+```bash
+docker build -t tourism-chatbot .
+docker run -p 7860:7860 --env-file .env tourism-chatbot
+```
 
-### REST API Endpoints
+## 🎯 Features & API Endpoints
 
-#### Authentication
-- `POST /api/auth/register` - User registration
-- `POST /api/auth/login` - User login
-- `POST /api/auth/logout` - User logout
+### Authentication
+- `POST /api/auth/register` - Register new user
+  - Body: `{"username": "user", "email": "user@example.com", "password": "secure123"}`
+- `POST /api/auth/login` - User login with session creation
+  - Body: `{"username": "user", "password": "secure123"}`
+- `POST /api/auth/logout` - Logout and clear session
+- `GET /api/auth/me` - Get current user info
 
-#### Chat
-- `POST /api/chat` - Send message to tourism agent
-  - Request: `{"message": "Tìm bãi biển đẹp ở Đà Nẵng", "allow_revisit": false}`
-  - Response: `{"response": "...", "visited_locations": [...], "metadata": {...}}`
+### Chat & Tourism Agent
+- `POST /api/chat` - Interact with tourism AI agent
+  - Body: `{"message": "Tìm bãi biển đẹp ở Đà Nẵng", "allow_revisit": false}`
+  - Response: Streaming SSE or JSON with recommendations
+  - Features: RAG search, location filtering, conversation memory
 
-#### Upload
+### Travel Logs
+- `POST /api/travel-log` - Create travel log entry
+  - Body: `{"location": "Hội An", "description": "Beautiful ancient town", "images": [...]}`
+- `GET /api/travel-log` - Get user's travel logs
+- `PUT /api/travel-log/<log_id>` - Update travel log
+- `DELETE /api/travel-log/<log_id>` - Delete travel log
+
+### Social Posts
+- `POST /api/posts` - Create new post
+  - Body: `{"content": "Amazing trip!", "images": [...], "location": "Đà Lạt"}`
+- `GET /api/posts` - Get all posts (with pagination)
+- `GET /api/posts/<post_id>` - Get specific post
+- `PUT /api/posts/<post_id>` - Update post
+- `DELETE /api/posts/<post_id>` - Delete post
+- `POST /api/posts/<post_id>/like` - Like/unlike post
+- `POST /api/posts/<post_id>/comment` - Add comment
+
+### File Upload
 - `POST /api/upload` - Upload images or documents
   - Returns: File URL and metadata
+  - Supports: Images (jpg, png, webp), documents
 
-### User Commands (Examples)
+### User Chat Commands (Vietnamese)
 
-#### 1. Search for Places
+#### Search for Places
 ```
 "Tìm bãi biển đẹp ở miền Trung"
-"Tôi muốn đi thác nước hoang sơ"
-"Gợi ý chùa chiền cổ kính"
+"Gợi ý thác nước hoang sơ"
+"Chùa chiền cổ kính ở Huế"
+"Địa điểm du lịch ở Đà Lạt"
 ```
 
-#### 2. Report Visited Locations
+#### Report Visited Locations
 ```
 "Tôi đã từng đến Hội An"
-"Đã ghé Đà Nẵng và Huế"
+"Đã ghé Đà Nẵng và Huế rồi"
 "Tôi đã đi Sapa"
 ```
 
-#### 3. Control Revisit Suggestions
+#### Control Revisit Suggestions
 ```
 "Cho phép gợi ý lại"          # Allow suggesting visited places
 "Không cho phép gợi ý lại"    # Only suggest new places
+```
+
+#### Image-based Search
+```
+"Tìm địa điểm giống trong ảnh này"  # Upload image
+"Những nơi có phong cảnh tương tự"
 ```
 
 ## 🏗️ Architecture
@@ -191,13 +259,52 @@ python app.py
 ### System Flow
 
 ```
-Client Request
-    ↓
-Flask Route Handler
-    ↓
-Session/User Validation
-    ↓
-LangGraph Tourism Agent
+┌─────────────┐
+│   Client    │
+│  (Web/App)  │
+└──────┬──────┘
+       │
+       ▼
+┌─────────────────────────────────────┐
+│          Flask REST API             │
+│  ┌──────────────────────────────┐  │
+│  │   Auth Middleware            │  │
+│  │   (Session Management)       │  │
+│  └──────────────┬───────────────┘  │
+│                 ▼                   │
+│  ┌──────────────────────────────┐  │
+│  │   Route Handlers             │  │
+│  │   - Chat                     │  │
+│  │   - Travel Log               │  │
+│  │   - Posts                    │  │
+│  └──────────────┬───────────────┘  │
+└─────────────────┼───────────────────┘
+                  │
+       ┌──────────┴──────────┐
+       ▼                     ▼
+┌──────────────┐      ┌─────────────┐
+│   MongoDB    │      │  Tourism    │
+│              │      │   Agent     │
+│ - Sessions   │      │  (LangGraph)│
+│ - Users      │      └──────┬──────┘
+│ - Posts      │             │
+│ - Logs       │      ┌──────┴──────────┐
+└──────────────┘      │                 │
+                      ▼                 ▼
+              ┌──────────────┐  ┌─────────────┐
+              │  RAG Engine  │  │  LLM Agent  │
+              │              │  │  (Gemini)   │
+              │ - ChromaDB   │  └─────────────┘
+              │ - Embeddings │
+              │ - CLIP Image │
+              └──────────────┘
+                      │
+                      ▼
+              ┌──────────────┐
+              │ PostgreSQL   │
+              │ (Checkpoints)│
+              └──────────────┘
+```
     │
     ├── Tool: retrieve_context
     │   ├── Query Vector Store (ChromaDB)
@@ -750,43 +857,38 @@ python app.py
 
 ### Production with Gunicorn
 ```bash
-gunicorn -w 4 -b 0.0.0.0:5000 app:app
-# 4 workers, bind to all interfaces on port 5000
+gunicorn app:app --bind 0.0.0.0:5000 --workers 2 --timeout 120
+# 2 workers, bind to all interfaces, 120s timeout for LLM processing
 ```
 
 ### Docker Deployment
 
-**Dockerfile:**
-```dockerfile
-FROM python:3.11-slim
+**Build and Run:**
+```bash
+# Build image
+docker build -t tourism-chatbot .
 
-WORKDIR /app
-
-# Install system dependencies
-RUN apt-get update && apt-get install -y postgresql-client
-
-# Copy requirements and install
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
-# Copy application
-COPY . .
-
-# Expose port
-EXPOSE 5000
-
-# Set environment
-ENV FLASK_ENV=production
-
-# Run with gunicorn
-CMD ["gunicorn", "-w", "4", "-b", "0.0.0.0:5000", "app:app"]
+# Run container
+docker run -p 7860:7860 --env-file .env tourism-chatbot
 ```
 
-**docker-compose.yml:**
+**Docker Compose:**
 ```yaml
 version: '3.8'
 
 services:
+  app:
+    build: .
+    ports:
+      - "5000:5000"
+    environment:
+      - FLASK_ENV=production
+    env_file:
+      - .env
+    depends_on:
+      - postgres
+      - mongodb
+
   postgres:
     image: postgres:15
     environment:
@@ -796,6 +898,77 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+
+  mongodb:
+    image: mongo:7
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+
+volumes:
+  postgres_data:
+  mongo_data:
+```
+
+### Hugging Face Spaces Deployment
+
+**1. Create a new Space:**
+- Go to https://huggingface.co/new-space
+- Choose **Docker** as SDK
+- Clone your Space repository
+
+**2. Configure environment variables in Space settings:**
+```bash
+# Required secrets (mark as secret)
+GEMINI_API_KEY=your-key
+MONGODB_URI=mongodb+srv://...
+DATABASE_URL=postgresql://...
+SECRET_KEY=your-secret-key
+```
+
+**3. Push your code:**
+```bash
+# Add HF Space as remote
+git remote add space https://huggingface.co/spaces/username/space-name
+git push space main
+```
+
+**4. Space Configuration:**
+The `Dockerfile` is already configured for HF Spaces (port 7860).
+
+**Important Notes:**
+- HF Spaces runs on port 7860 by default
+- Use external MongoDB (MongoDB Atlas) and PostgreSQL (ElephantSQL/Render)
+- Keep vector database in the repository or use persistent storage
+- Set all environment variables in Space settings (not in code)
+
+### Cloud Platform Deployments
+
+**Render:**
+```bash
+# Create new Web Service
+# Connect GitHub repository
+# Add environment variables
+# Deploy command: gunicorn app:app --bind 0.0.0.0:$PORT
+```
+
+**Railway:**
+```bash
+# Create new project from GitHub
+# Add PostgreSQL and MongoDB services
+# Configure environment variables
+# Deploy automatically on push
+```
+
+**Heroku:**
+```bash
+# Create Procfile (already included)
+heroku create tourism-chatbot
+heroku addons:create heroku-postgresql:hobby-dev
+heroku config:set GEMINI_API_KEY=your-key
+git push heroku main
+```
 
   mongodb:
     image: mongo:latest
@@ -983,24 +1156,56 @@ def filter_visited_locations(locations, visited_ids, allow_revisit):
 
 - [LangChain Documentation](https://python.langchain.com/)
 - [LangGraph Documentation](https://langchain-ai.github.io/langgraph/)
-- [Gemini API Documentation](https://ai.google.dev/)
+- [Google Gemini API](https://ai.google.dev/)
 - [ChromaDB Documentation](https://docs.trychroma.com/)
 - [Sentence Transformers](https://www.sbert.net/)
+- [Flask Documentation](https://flask.palletsprojects.com/)
+- [MongoDB Documentation](https://www.mongodb.com/docs/)
+- [PostgreSQL Documentation](https://www.postgresql.org/docs/)
+
+## 🤝 Contributing
+
+Contributions are welcome! Please follow these steps:
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+**Development Guidelines:**
+- Follow PEP 8 style guide for Python code
+- Add tests for new features
+- Update documentation as needed
+- Ensure all tests pass before submitting PR
 
 ## 📄 License
 
-This project is part of the Tourism Chatbot system.
+This project is licensed under the MIT License. See the LICENSE file for details.
 
-## 👥 Support
+## 👥 Authors & Support
 
-For issues, questions, or feature requests:
-1. Check existing GitHub issues
-2. Review troubleshooting section
-3. Contact the development team
+**Maintainer:** [@hienlongg](https://github.com/hienlongg)
+
+**For issues and questions:**
+- 🐛 [Report bugs](https://github.com/hienlongg/Tourism-Chatbot/issues)
+- 💡 [Request features](https://github.com/hienlongg/Tourism-Chatbot/issues)
+- 📧 Contact: your-email@example.com
+
+## 🙏 Acknowledgments
+
+- Google Gemini for LLM capabilities
+- LangChain team for the amazing framework
+- HuggingFace for embedding models
+- ChromaDB for vector storage
+- Vietnamese tourism data sources
 
 ---
 
-**Last Updated**: December 2024
-**Version**: 2.0.0
-**Python**: 3.10+
-**Status**: Active Development
+**Last Updated:** December 28, 2025  
+**Version:** 2.1.0  
+**Python:** 3.11+  
+**Status:** ✅ Active Development
+
+**Demo:** [Hugging Face Space](https://huggingface.co/spaces/hienlong/my-tourism-backend)  
+**Repository:** [GitHub](https://github.com/hienlongg/Tourism-Chatbot)
