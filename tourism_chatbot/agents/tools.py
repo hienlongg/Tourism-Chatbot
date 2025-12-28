@@ -52,7 +52,15 @@ def set_user_context(visited_ids: List[str], allow_revisit: bool = False):
 @tool(response_format="content_and_artifact")
 def retrieve_context(query: str) -> Tuple[str, Dict]:
     """Retrieve tourism information and build context for LLM.
+def retrieve_context(query: str) -> Tuple[str, Dict]:
+    """Retrieve tourism information and build context for LLM.
     
+    This tool:
+    1. Searches the tourism database semantically
+    2. Filters out locations the user has already visited (unless revisiting is allowed)
+    3. Builds structured context ready for the LLM
+    
+    Returns formatted context string and metadata about the results.
     This tool:
     1. Searches the tourism database semantically
     2. Filters out locations the user has already visited (unless revisiting is allowed)
@@ -66,8 +74,18 @@ def retrieve_context(query: str) -> Tuple[str, Dict]:
     # STEP 1: Semantic Search
     top_k = 5 if _USER_VISITED_IDS and not _ALLOW_REVISIT else 3
     retrieved_docs = semantic_search(vector_store, query, top_k=top_k, verbose=False)
+    # STEP 1: Semantic Search
+    top_k = 5 if _USER_VISITED_IDS and not _ALLOW_REVISIT else 3
+    retrieved_docs = semantic_search(vector_store, query, top_k=top_k, verbose=False)
     logger.info(f"📊 Retrieved {len(retrieved_docs)} documents (before filtering)")
     
+    # STEP 2: Filter visited locations
+    new_places, old_places, filtered_count = filter_visited_locations(
+        retrieved_docs,
+        _USER_VISITED_IDS,
+        allow_revisit=_ALLOW_REVISIT,
+        verbose=False
+    )
     # STEP 2: Filter visited locations
     new_places, old_places, filtered_count = filter_visited_locations(
         retrieved_docs,
@@ -83,7 +101,16 @@ def retrieve_context(query: str) -> Tuple[str, Dict]:
     
     # Determine which places to use for context
     final_places = retrieved_docs if _ALLOW_REVISIT else new_places
+    if old_places:
+        filtered_names = [doc.metadata.get('TenDiaDanh', 'N/A') for doc in old_places[:3]]
+        logger.info(f"🚫 Filtered out {len(old_places)} visited locations: {', '.join(filtered_names)}")
     
+    # Determine which places to use for context
+    final_places = retrieved_docs if _ALLOW_REVISIT else new_places
+    
+    logger.info(f"✅ Using {len(final_places)} documents for context building")
+    if final_places:
+        logger.info(f"📍 Top result: {final_places[0].metadata.get('TenDiaDanh', 'N/A')}")
     logger.info(f"✅ Using {len(final_places)} documents for context building")
     if final_places:
         logger.info(f"📍 Top result: {final_places[0].metadata.get('TenDiaDanh', 'N/A')}")

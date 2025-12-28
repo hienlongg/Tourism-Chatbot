@@ -356,6 +356,7 @@ def send_message():
     thread_id = get_thread_id(user_id)
 
     logger.info(f"Message from user {user_id}: {user_message[:50]}...")
+    logger.info(f"Message from user {user_id}: {user_message[:50]}...")
 
     try:
         # Check for visited location command
@@ -375,6 +376,7 @@ def send_message():
 
             if new_ids:
                 response = (
+                    f"Đã ghi nhận! Bạn đã từng đến: **{', '.join(new_ids)}**\n\n"
                     f"Đã ghi nhận! Bạn đã từng đến: **{', '.join(new_ids)}**\n\n"
                     f"Tôi sẽ ưu tiên gợi ý những địa điểm mới cho bạn.\n"
                     f"(Hiện tại: {len(visited_ids)} địa điểm đã ghé thăm)"
@@ -405,11 +407,13 @@ def send_message():
                 chat_context["allow_revisit"] = True
                 response = (
                     "Đã bật chế độ cho phép gợi ý lại!\n\n"
+                    "Đã bật chế độ cho phép gợi ý lại!\n\n"
                     "Tôi sẽ gợi ý cả những địa điểm bạn đã từng đến."
                 )
             else:  # disallow
                 chat_context["allow_revisit"] = False
                 response = (
+                    "Đã tắt chế độ gợi ý lại!\n\n"
                     "Đã tắt chế độ gợi ý lại!\n\n"
                     "Tôi sẽ chỉ gợi ý những địa điểm mới mà bạn chưa đến."
                 )
@@ -485,6 +489,7 @@ def send_message():
         )
 
         logger.info(f"Agent response generated for user {user_id}")
+        logger.info(f"Agent response generated for user {user_id}")
 
         # Extract locations from answer (with lat/lng from CSV)
         try:
@@ -493,6 +498,7 @@ def send_message():
                 f"📍 Extracted {len(matched_locations)} locations from answer"
             )
         except Exception as e:
+            logger.error(f"Error extracting locations: {str(e)}")
             logger.error(f"Error extracting locations: {str(e)}")
             matched_locations = []
 
@@ -514,6 +520,7 @@ def send_message():
         )
 
     except Exception as e:
+        logger.error(f"Error processing message: {str(e)}")
         logger.error(f"Error processing message: {str(e)}")
         return (
             jsonify(
@@ -675,9 +682,11 @@ def send_message_stream():
                 )
                 logger.info(
                     f"Extracted {len(matched_locations)} locations from streamed answer"
+                    f"Extracted {len(matched_locations)} locations from streamed answer"
                 )
             except Exception as e:
                 logger.error(
+                    f"Error extracting locations (stream): {str(e)}"
                     f"Error extracting locations (stream): {str(e)}"
                 )
                 matched_locations = []
@@ -699,6 +708,7 @@ def send_message_stream():
             )
 
         except Exception as e:
+            logger.error(f"Streaming error: {str(e)}")
             logger.error(f"Streaming error: {str(e)}")
             yield (
                 "data: "

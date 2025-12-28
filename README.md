@@ -445,6 +445,7 @@ allow_revisit: bool        # Revisit control flag
 | `SECRET_KEY` | Yes | - | Flask session secret key |
 | `ALLOWED_ORIGINS` | No | localhost:3000 | CORS allowed origins |
 | `GOOGLE_CLIENT_ID` | Yes | - | Google OAuth Client ID |
+| `GOOGLE_CLIENT_ID` | Yes | - | Google OAuth Client ID |
 
 ### Model Configuration (in `tourism_chatbot/rag/rag_engine.py`)
 
@@ -702,6 +703,17 @@ load_dotenv()
 api_key = os.getenv('GEMINI_API_KEY')
 print(f"API Key loaded: {api_key is not None}")
 ```
+
+### Setting up Google Login
+
+1. Go to [Google Cloud Console](https://console.cloud.google.com/).
+2. Create a new project or select an existing one.
+3. Keep the project selected. Go to **APIs & Services** > **OAuth consent screen** and configure it.
+4. Go to **Credentials**, click **Create Credentials** > **OAuth client ID**.
+5. Select **Web application**.
+6. Add your frontend URL (e.g., `http://localhost:5173`) to **Authorized JavaScript origins**.
+7. Copy the **Client ID** and add it to your `.env` file as `GOOGLE_CLIENT_ID`.
+
 
 ### Setting up Google Login
 
